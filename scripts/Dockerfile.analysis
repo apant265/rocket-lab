@@ -1,0 +1,3 @@
+FROM opencfd/openfoam-default:2406
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends calculix-ccx && rm -rf /var/lib/apt/lists/*

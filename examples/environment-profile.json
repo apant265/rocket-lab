@@ -1,0 +1,21 @@
+{
+  "source": "Synthetic profile for verification, not a forecast",
+  "wind_profile": [
+    {
+      "altitude_m": 600,
+      "east_mps": 2,
+      "north_mps": 0
+    },
+    {
+      "altitude_m": 2000,
+      "east_mps": 8,
+      "north_mps": 3
+    },
+    {
+      "altitude_m": 10000,
+      "east_mps": 15,
+      "north_mps": 5
+    }
+  ],
+  "air_profile": []
+}

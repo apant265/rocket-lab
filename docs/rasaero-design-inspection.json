@@ -1,0 +1,90 @@
+{
+  "source": "sources/Plumbbob_MKIII_R75.CDX1",
+  "format": "cdx1",
+  "geometry": [
+    {
+      "diameter_m": 0.10210799999999999,
+      "length_m": 0.508,
+      "location_m": 0.0,
+      "part": "NoseCone"
+    },
+    {
+      "diameter_m": 0.10210799999999999,
+      "length_m": 1.7907,
+      "location_m": 0.508,
+      "part": "BodyTube"
+    },
+    {
+      "diameter_m": 0.1062228,
+      "length_m": 1.2827,
+      "location_m": 2.2986999999999997,
+      "part": "Booster"
+    },
+    {
+      "diameter_m": 0.156718,
+      "length_m": 1.5748,
+      "location_m": 3.6449,
+      "part": "Booster"
+    }
+  ],
+  "motors": [
+    "N5800-CS  (CTI)",
+    "O3400-IM-P  (CTI)",
+    "O6000W-P  (AeroTech)"
+  ],
+  "saved_outputs": [
+    {
+      "field": "UseBooster1",
+      "raw_value": "False",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "UseBooster2",
+      "raw_value": "False",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "SustainerLaunchWt",
+      "raw_value": "48.1",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "Booster1LaunchWt",
+      "raw_value": "96.4",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "IncludeBooster1",
+      "raw_value": "True",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "Booster2LaunchWt",
+      "raw_value": "182",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "IncludeBooster2",
+      "raw_value": "True",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "TimetoApogee",
+      "raw_value": "196.6226",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "MaxAltitude",
+      "raw_value": "497861.3",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    },
+    {
+      "field": "MaxVelocity",
+      "raw_value": "5746.049",
+      "units": "native RASAero: ft, ft/s, lb, s, or boolean"
+    }
+  ],
+  "notes": [
+    "Inspection only: motor names are not thrust curves; stored output values may be stale. Geometry uses inches converted to SI. Resolve booster enable flags against simulation include flags."
+  ]
+}

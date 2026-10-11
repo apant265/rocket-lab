@@ -1,0 +1,34 @@
+[package]
+name = "rocket-lab"
+version = "0.1.0"
+edition = "2024"
+description = "Deterministic six degree of freedom sounding rocket simulator and Bevy flight laboratory"
+license = "MIT"
+
+[features]
+default = []
+viewer = ["dep:bevy", "dep:bevy_egui", "dep:reqwest", "dep:image", "dep:wgpu"]
+
+[dependencies]
+glam = { version = "0.30", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+clap = { version = "4", features = ["derive"] }
+csv = "1"
+roxmltree = "0.21"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+bevy = { version = "0.18.1", optional = true, default-features = false, features = ["std", "async_executor", "bevy_asset", "bevy_color", "bevy_core_pipeline", "bevy_gizmos", "bevy_gizmos_render", "bevy_image", "bevy_mesh", "bevy_camera", "bevy_light", "bevy_pbr", "bevy_render", "bevy_scene", "bevy_shader", "bevy_window", "bevy_winit", "multi_threaded", "png", "x11", "tonemapping_luts"] }
+bevy_egui = { version = "0.39.1", optional = true, default-features = false, features = ["default_fonts", "render"] }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls"] }
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg"] }
+wgpu = { version = "27", optional = true, default-features = false, features = ["wgsl"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[[bin]]
+name = "rocket-lab"
+path = "src/main.rs"

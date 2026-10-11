@@ -1,0 +1,6 @@
+; Synthetic demonstration only. Header diameter/length mm, mass kg, curve N/s.
+DEMO 98 600 0 5.0 8.0 SYNTHETIC
+0.0 0.0
+0.12 2200.0
+3.85 2200.0
+4.0 0.0

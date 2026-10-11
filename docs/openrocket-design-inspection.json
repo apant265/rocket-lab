@@ -1,0 +1,860 @@
+{
+  "source": "sources/Plumbbob_MKIII_R75 (1).ork",
+  "format": "ork",
+  "geometry": [
+    {
+      "fields": {},
+      "part": "stage"
+    },
+    {
+      "fields": {},
+      "part": "stage"
+    },
+    {
+      "fields": {},
+      "part": "stage"
+    },
+    {
+      "fields": {},
+      "part": "stage"
+    },
+    {
+      "fields": {
+        "id": "bc2b88a6-f62a-4014-9233-d9b30e1f480c",
+        "name": "Payload"
+      },
+      "part": "stage"
+    },
+    {
+      "fields": {
+        "aftradius": "0.0127",
+        "aftshouldercapped": "true",
+        "aftshoulderlength": "0.0254",
+        "aftshoulderradius": "0.01016",
+        "aftshoulderthickness": "0.02032",
+        "finish": "polished",
+        "id": "08d3f60b-d306-4ae5-a3c7-6aa74a138676",
+        "isflipped": "false",
+        "length": "0.10159999999999997",
+        "material": "Titanium",
+        "name": "Nosecone Tip",
+        "overridemass": "0.1179340162",
+        "overridesubcomponentsmass": "false",
+        "shape": "conical",
+        "thickness": "filled"
+      },
+      "part": "nosecone"
+    },
+    {
+      "fields": {
+        "axialoffset": "-0.012699999999999994",
+        "id": "eb67c4fe-f602-446e-b3d8-3aa8c1352caa",
+        "mass": "0.34116562651331694",
+        "masscomponenttype": "masscomponent",
+        "name": "Nosecone Threaded Rod",
+        "packedlength": "0.6095999999999995",
+        "packedradius": "0.004762499999999999",
+        "position": "-0.012699999999999994",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.17779999999999996",
+        "id": "d0709382-aa1f-4250-b94c-ccba5f626d55",
+        "mass": "0.335",
+        "masscomponenttype": "tracker",
+        "name": "KATE 3",
+        "packedlength": "0.20319999999999994",
+        "packedradius": "0.019049999999999997",
+        "position": "0.17779999999999996",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.381",
+        "id": "645b0a90-7514-4345-a1a9-129d9cbebe8a",
+        "mass": "1.81436948",
+        "masscomponenttype": "flightcomputer",
+        "name": "MUON and ANVIL",
+        "packedlength": "0.17779999999999996",
+        "packedradius": "0.038099999999999995",
+        "position": "0.381",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "58eb7a46-d4d9-4dd1-b550-48d269c5e246",
+        "length": "0.0508",
+        "material": "Fiberglass",
+        "name": "Nosecone Shoulder",
+        "radius": "auto 0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "finish": "polished",
+        "id": "7f02d1d2-cb95-4c64-ab73-d388a31adac2",
+        "length": "0.0127",
+        "material": "Aluminum",
+        "name": "Nosecone Coupler Flange",
+        "overridemass": "0.02948350405",
+        "overridesubcomponentsmass": "false",
+        "radius": "auto 0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.16827499999999998",
+        "id": "ee369768-0070-42ee-af65-d8b1ca8924db",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Nosecone Deployment Charge 0D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.16827499999999998",
+        "radialdirection": "0.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.16827499999999998",
+        "id": "4e79f0fc-4fbf-43d1-aadb-01f1b2b64bb7",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Nosecone Deployment Charge 180D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.16827499999999998",
+        "radialdirection": "180.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "ed059653-969d-4f92-9558-cf075f5e5149",
+        "length": "0.4064",
+        "material": "Carbon fiber",
+        "name": "Payload Body Tube",
+        "overridemass": "0.30572125738000006",
+        "overridesubcomponentsmass": "false",
+        "radius": "0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.10159999999999998",
+        "id": "79be08da-52c1-4038-8b9e-6adbd1e33dc3",
+        "mass": "0.07581458366962605",
+        "masscomponenttype": "masscomponent",
+        "name": "Payload Recovery Harness Mounting Hardware",
+        "packedlength": "0.07619999999999999",
+        "packedradius": "0.00635",
+        "position": "0.10159999999999998",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.1397",
+        "cd": "2.2",
+        "deployaltitude": "3048.0",
+        "deploydelay": "0.0",
+        "deployevent": "never",
+        "diameter": "1.8288",
+        "id": "8d22dbb2-2292-47e5-a65b-0a670bb10b46",
+        "linecount": "18",
+        "linelength": "0.9144",
+        "linematerial": "Kevlar thread 800 (1.1 mm, 3/64 in)",
+        "material": "Ripstop nylon",
+        "name": "Payload Main Parachute",
+        "overridemass": "0.24947580328000002",
+        "overridesubcomponentsmass": "false",
+        "packedlength": "0.1143",
+        "packedradius": "0.04826",
+        "position": "0.1397",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "parachute"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.1397",
+        "id": "4ae64bd9-2a7e-44cd-ad2e-7caef7d00619",
+        "mass": "0.0566990462",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Payload Main Parachute Deployment Bag",
+        "packedlength": "0.1143",
+        "packedradius": "0.04826",
+        "position": "0.1397",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.1397",
+        "id": "ee843373-8f46-4c92-8a9d-35bd4ccc2b31",
+        "mass": "0.050543055779750656",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Payload Main Parachute Mounting Hardware",
+        "packedlength": "0.05079999999999995",
+        "packedradius": "0.00635",
+        "position": "0.1397",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2667",
+        "cd": "0.97",
+        "deployaltitude": "200.0",
+        "deploydelay": "0.0",
+        "deployevent": "never",
+        "diameter": "0.30479999999999996",
+        "id": "944a2fa4-9ef3-405b-bab6-ab6c64e436f4",
+        "linecount": "8",
+        "linelength": "0.35052",
+        "linematerial": "Nylon #200 IIa Paraline [flat 4.0 mm, 5/32 in]",
+        "material": "Ripstop nylon, lightweight, 3 mil",
+        "name": "Payload Drogue Parachute",
+        "overridemass": "0.09525439770000001",
+        "overridesubcomponentsmass": "false",
+        "packedlength": "0.09525",
+        "packedradius": "0.03175",
+        "position": "0.2667",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "parachute"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2667",
+        "id": "f4301d49-d00a-441e-b7b0-052cdf4941a2",
+        "mass": "0.050543055779750656",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Payload Drogue Parachute Mounting Hardware",
+        "packedlength": "0.05079999999999995",
+        "packedradius": "0.00635",
+        "position": "0.2667",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2793999999999999",
+        "id": "e7998390-af53-4007-9699-9bfcfd55eda1",
+        "mass": "0.07581458366962605",
+        "masscomponenttype": "masscomponent",
+        "name": "Payload Despin Recovery Harness Mounting Hardware",
+        "packedlength": "0.07619999999999999",
+        "packedradius": "0.00635",
+        "position": "0.2793999999999999",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "27d55020-f4b5-4de2-8500-a377cbeca5e1",
+        "length": "0.0635",
+        "material": "Aluminum",
+        "name": "Payload Despin Farring",
+        "overridemass": "0.04331533068069199",
+        "overridesubcomponentsmass": "false",
+        "radius": "auto 0.051053999999999995",
+        "thickness": "7.9375E-4"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "id": "728ff689-4595-4277-8b3d-dac939ce4eeb",
+        "name": "Booster",
+        "separationconfiguration": "\n            ",
+        "separationdelay": "0.0",
+        "separationevent": "ejection"
+      },
+      "part": "stage"
+    },
+    {
+      "fields": {
+        "finish": "smooth",
+        "id": "5eb408c0-6f43-44fc-81e6-f54c9623141c",
+        "length": "0.9017",
+        "material": "Fiberglass",
+        "name": "Sustainer Upper Body Tube",
+        "overridemass": "0.6803885550000001",
+        "overridesubcomponentsmass": "false",
+        "radius": "0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "axialoffset": "-0.0635",
+        "id": "b201a2c5-b5c6-4ef0-90de-a2afbd921ffa",
+        "mass": "0.08523574282472114",
+        "masscomponenttype": "masscomponent",
+        "name": "Sustainer Threaded Rod",
+        "packedlength": "0.15239999999999998",
+        "packedradius": "0.004762499999999999",
+        "position": "-0.0635",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "b9f0a55f-ce7f-4449-ab35-aabc384593f2",
+        "length": "0.15239999999999998",
+        "material": "Aluminum",
+        "name": "Sustainer Fin Can",
+        "radius": "auto 0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "angleoffset": "0.0",
+        "axialoffset": "0.0254",
+        "cant": "0.0",
+        "crosssection": "airfoil",
+        "filletmaterial": "Aluminum",
+        "filletradius": "0.0127",
+        "fincount": "4",
+        "finish": "polished",
+        "height": "0.11048999999999999",
+        "id": "3bf45dc7-40ff-46db-b696-755ad073173d",
+        "instancecount": "4",
+        "material": "Aluminum",
+        "name": "Sustainer Fins",
+        "position": "0.0254",
+        "radiusoffset": "0.0",
+        "rootchord": "0.254",
+        "rotation": "0.0",
+        "sweeplength": "0.3035687800755411",
+        "thickness": "0.003175",
+        "tipchord": "0.1016"
+      },
+      "part": "trapezoidfinset"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "68086cac-9b74-4571-a5e6-5284de741494",
+        "length": "0.127",
+        "material": "Carbon fiber",
+        "motormount": "\n              ",
+        "name": "Sustainer Lower Body Tube",
+        "overridemass": "0.09525439770000001",
+        "overridesubcomponentsmass": "false",
+        "radius": "0.051053999999999995",
+        "thickness": "0.0015239999999999976"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "id": "d120d79c-6e38-49d9-ad54-c90768efc92f",
+        "name": "Booster 2",
+        "separationconfiguration": "\n            ",
+        "separationdelay": "0.0",
+        "separationevent": "burnout"
+      },
+      "part": "stage"
+    },
+    {
+      "fields": {
+        "finish": "smooth",
+        "id": "281d319c-6a6b-452c-b38a-2b0258fe4019",
+        "length": "1.2065",
+        "material": "Carbon fiber",
+        "name": "Booster 2 Body Tube",
+        "overridemass": "1.54221405664",
+        "overridesubcomponentsmass": "false",
+        "radius": "0.0531114",
+        "thickness": "0.002032"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.0254",
+        "id": "a7f656bd-b812-4ee8-8e61-0e74422fab4d",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 2 Staging Charge 0D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.0254",
+        "radialdirection": "0.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.0254",
+        "id": "a461ba6c-64b6-4cf6-b335-385bf4b6ed90",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 2 Staging Charge 180D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.0254",
+        "radialdirection": "180.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.0635",
+        "cd": "2.2",
+        "deployaltitude": "200.0",
+        "deploydelay": "0.0",
+        "deployevent": "never",
+        "diameter": "1.2191999999999998",
+        "id": "e27ed981-83e0-4c9e-868e-474b28c035e7",
+        "linecount": "12",
+        "linelength": "1.7526",
+        "linematerial": "Nylon flat webbing md. (13 mm, 1/2  in)",
+        "material": "Ripstop nylon, lightweight, 3 mil",
+        "name": "Booster 2 Parachute",
+        "overridemass": "0.12190294933",
+        "overridesubcomponentsmass": "false",
+        "packedlength": "0.05841999999999999",
+        "packedradius": "0.04826",
+        "position": "0.0635",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "parachute"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.0635",
+        "id": "83b4303e-1b94-4d71-86b5-cdb08700e97e",
+        "mass": "0.0566990462",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Booster 2 Parachute Deployment Bag",
+        "packedlength": "0.05841999999999999",
+        "packedradius": "0.04826",
+        "position": "0.0635",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.06985",
+        "id": "b81ea78b-5038-4a5a-be6f-54f0f533c604",
+        "mass": "0.050543055779750656",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Booster 2 Parachute Mounting Hardware",
+        "packedlength": "0.05079999999999995",
+        "packedradius": "0.00635",
+        "position": "0.06985",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.12699999999999995",
+        "id": "ced45762-42de-4a1a-966b-0dd282397385",
+        "mass": "0.07581458366962605",
+        "masscomponenttype": "masscomponent",
+        "name": "Booster 2 Recovery Mounting Hardware",
+        "packedlength": "0.07619999999999999",
+        "packedradius": "0.00635",
+        "position": "0.12699999999999995",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "-1.41605",
+        "id": "7495e5c5-0dfe-4924-8070-ff0f8873c524",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 2 Deployment Charge 0D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "-1.41605",
+        "radialdirection": "0.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "-1.41605",
+        "id": "7e5b5914-a5e6-4ada-81a9-ab2073f46a43",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 2 Deployment Charge 180D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "-1.41605",
+        "radialdirection": "180.0",
+        "radialposition": "0.0254"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "-1.2065",
+        "id": "4d9fe9bc-ac79-44c5-a75d-0f5770099ab7",
+        "mass": "0.1278536142370817",
+        "masscomponenttype": "masscomponent",
+        "name": "Booster 2 Threaded Rod",
+        "packedlength": "0.22859999999999994",
+        "packedradius": "0.004762499999999999",
+        "position": "-1.2065",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "-1.2763500000000005",
+        "id": "dbfe6a0b-22ff-4a8f-bda7-0408bd61557c",
+        "mass": "0.5669904625000001",
+        "masscomponenttype": "flightcomputer",
+        "name": "Booster 2 Avionics",
+        "packedlength": "0.12699999999999997",
+        "packedradius": "0.050799999999999984",
+        "position": "-1.2763500000000005",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "06595cbb-0316-4f21-968f-590c68886389",
+        "length": "0.15239999999999998",
+        "material": "Aluminum",
+        "name": "Booster 2 Fin Can",
+        "radius": "auto 0.0531114",
+        "thickness": "0.002057400000000008"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "angleoffset": "0.0",
+        "axialoffset": "0.0254",
+        "cant": "0.0",
+        "crosssection": "airfoil",
+        "filletmaterial": "Aluminum",
+        "filletradius": "0.0127",
+        "fincount": "4",
+        "finish": "polished",
+        "height": "0.1143",
+        "id": "c9c0f32d-c5ef-4ed9-842b-439c247844dd",
+        "instancecount": "4",
+        "material": "Aluminum",
+        "name": "Booster 2 Fins",
+        "position": "0.0254",
+        "radiusoffset": "0.0",
+        "rootchord": "0.254",
+        "rotation": "0.0",
+        "sweeplength": "0.31403666904366323",
+        "thickness": "0.003175",
+        "tipchord": "0.1016"
+      },
+      "part": "trapezoidfinset"
+    },
+    {
+      "fields": {
+        "id": "00484d35-1e00-47f7-a5b1-774b84f4ccb7",
+        "name": "Booster 1",
+        "separationconfiguration": "\n            ",
+        "separationdelay": "0.0",
+        "separationevent": "ejection"
+      },
+      "part": "stage"
+    },
+    {
+      "fields": {
+        "finish": "normal",
+        "id": "5fc58fb8-4f7f-4afd-a2fb-1a3a7a43155b",
+        "length": "0.00635",
+        "material": "Aluminum",
+        "name": "Booster 1 Transition Shoulder",
+        "overridemass": "0.0",
+        "overridesubcomponentsmass": "false",
+        "radius": "auto 0.078359",
+        "thickness": "0.025"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "finish": "smooth",
+        "id": "c9a43eed-10b2-4378-abbc-500ed75132a6",
+        "length": "1.5748",
+        "material": "Carbon fiber",
+        "motormount": "\n              ",
+        "name": "Booster 1 Body Tube",
+        "overridemass": "2.5939813636499998",
+        "overridesubcomponentsmass": "false",
+        "radius": "0.078359",
+        "thickness": "0.002159000000000008"
+      },
+      "part": "bodytube"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2158999999999999",
+        "id": "b024a1ef-b7dd-4695-a3cb-fedab317c18d",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 1 Staging Charge 180D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.2158999999999999",
+        "radialdirection": "180.0",
+        "radialposition": "0.0508"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2158999999999999",
+        "id": "b7d09830-53cf-430a-aac0-9708ba405125",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 1 Staging Charge 0D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.2158999999999999",
+        "radialdirection": "0.0",
+        "radialposition": "0.0508"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.25399999999999995",
+        "cd": "2.2",
+        "deployaltitude": "200.0",
+        "deploydelay": "0.0",
+        "deployevent": "never",
+        "diameter": "1.524",
+        "id": "daf9edfc-e390-4ca6-a33c-36f800d4d7b0",
+        "linecount": "18",
+        "linelength": "0.9144",
+        "linematerial": "Kevlar 12-strand (7.9 mm, 5/16 in)",
+        "material": "Ripstop nylon",
+        "name": "Booster 1 Parachute",
+        "overridemass": "0.19277675708",
+        "overridesubcomponentsmass": "false",
+        "packedlength": "0.035559999999999994",
+        "packedradius": "0.07619999999999999",
+        "position": "0.25399999999999995",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "parachute"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.25399999999999995",
+        "id": "4087aafe-5997-4941-ac89-f13059dda0c9",
+        "mass": "0.1133980924",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Booster 1 Parachute Deployment Bag",
+        "overridemass": "0.1133980924",
+        "overridesubcomponentsmass": "false",
+        "packedlength": "0.035559999999999994",
+        "packedradius": "0.07619999999999999",
+        "position": "0.25399999999999995",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.254",
+        "id": "69b33984-d438-4a11-8bf8-fdd4a3a401f2",
+        "mass": "0.050543055779750656",
+        "masscomponenttype": "recoveryhardware",
+        "name": "Booster 1 Parachute Mounting Hardware",
+        "packedlength": "0.05079999999999995",
+        "packedradius": "0.00635",
+        "position": "0.254",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.2920999999999998",
+        "id": "6f615947-f1c3-46b2-b3d3-27bcbd3b7c8f",
+        "mass": "0.07581458366962605",
+        "masscomponenttype": "masscomponent",
+        "name": "Booster 1 Recovery Harness Mounting Hardware",
+        "packedlength": "0.0508",
+        "packedradius": "0.00635",
+        "position": "0.2920999999999998",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.30479999999999996",
+        "id": "09257fb4-effb-4010-889c-24d944e73d5d",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 1 Deployment Charge 0D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.30479999999999996",
+        "radialdirection": "0.0",
+        "radialposition": "0.0508"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.30479999999999996",
+        "id": "5cf9ce0a-511f-4e6f-8605-7b1c720b9412",
+        "mass": "0.034734434808991674",
+        "masscomponenttype": "deploymentcharge",
+        "name": "Booster 1 Deployment Charge 180D",
+        "packedlength": "0.0254",
+        "packedradius": "0.0127",
+        "position": "0.30479999999999996",
+        "radialdirection": "180.0",
+        "radialposition": "0.0508"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.30479999999999996",
+        "id": "17ee50f0-8c4f-4949-a353-2bfc323d41af",
+        "mass": "0.11372187550443907",
+        "masscomponenttype": "masscomponent",
+        "name": "Booster 1 Threaded Rod",
+        "packedlength": "0.2032",
+        "packedradius": "0.004762499999999999",
+        "position": "0.30479999999999996",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.3428999999999999",
+        "id": "4cabc6e8-1c52-4e01-b345-dfde476117f4",
+        "mass": "0.6803885550000001",
+        "masscomponenttype": "flightcomputer",
+        "name": "Booster 1 Avionics",
+        "packedlength": "0.10159999999999997",
+        "packedradius": "0.07619999999999999",
+        "position": "0.3428999999999999",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    },
+    {
+      "fields": {
+        "angleoffset": "0.0",
+        "axialoffset": "-0.040919399999999995",
+        "cant": "1.0",
+        "crosssection": "airfoil",
+        "filletmaterial": "Carbon fiber",
+        "filletradius": "6.0E-4",
+        "fincount": "4",
+        "finish": "polished",
+        "height": "0.15239999999999998",
+        "id": "c27dc576-5632-49cc-9615-db7bad5c9696",
+        "instancecount": "4",
+        "material": "Fiberglass",
+        "name": "Booster 1 Fins",
+        "position": "-0.040919399999999995",
+        "radiusoffset": "0.0",
+        "rootchord": "0.2794",
+        "rotation": "0.0",
+        "sweeplength": "0.2286",
+        "thickness": "0.00635",
+        "tipchord": "0.0508"
+      },
+      "part": "trapezoidfinset"
+    },
+    {
+      "fields": {
+        "axialoffset": "0.0",
+        "id": "f35f4cfd-20c9-454d-9eef-f029f6446e4c",
+        "mass": "31.751465900000003",
+        "masscomponenttype": "battery",
+        "name": "Experimental Motor",
+        "packedlength": "1.0668",
+        "packedradius": "0.07619999999999999",
+        "position": "0.0",
+        "radialdirection": "0.0",
+        "radialposition": "0.0"
+      },
+      "part": "masscomponent"
+    }
+  ],
+  "motors": [
+    "20146N5800-P",
+    "21062O3400-P"
+  ],
+  "saved_outputs": [],
+  "notes": [
+    "Inspection only: native OpenRocket SI geometry and saved configuration; component overrides, nested positions and motor assignments require explicit mapping to a mission."
+  ]
+}

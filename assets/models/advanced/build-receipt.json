@@ -1,0 +1,12 @@
+{
+  "blender": "5.2.0 LTS",
+  "parts": 10,
+  "vertices": 18956,
+  "triangles": 29832,
+  "mission": "C:\\Users\\apant\\workspace\\Rocket Project\\examples\\advanced-laboratory.json",
+  "outputs": [
+    "rocket.blend",
+    "rocket.glb",
+    "rocket.mesh.json"
+  ]
+}

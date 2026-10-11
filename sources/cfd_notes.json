@@ -1,0 +1,6 @@
+[
+  "Validation: surface pressure on the 7.1° titanium tip cone is within about 1–2.5% of the exact Taylor–Maccoll solution. Nose wave drag from the GPU solver and from OpenFOAM agrees within 0.5% at M2.0, 3.0 and 5.3. Refining the grid from 0.9 mm to 0.4 mm cells changes nose drag by less than 0.5%.",
+  "At Mach 1.5–2 the CFD-based build-up matches the generic drag curve used in this review's rough apogee check. Above Mach 3 it is roughly half of it (Cd ≈ 0.15 vs 0.32 at M5.3, before fin wave drag). The sustainer burns out near Mach 5, so the low-drag end of the apogee range is the more likely one. RASAero's ~152 km is the credible prediction, and the 150 km FAA ceiling (Finding 2.1) is an active constraint.",
+  "Above Mach 2, skin friction and base drag dominate the total. Surface finish therefore moves the apogee noticeably (the RASAero file uses 'Rough Camouflage Paint'), so the dispersion analysis needs a drag uncertainty band, not a single curve.",
+  "Not covered: fin wave drag and fin/body interference (needs 3D), power-on base drag, the stage-1 and stage-2 stacks, and viscous effects on the pressure field. A useful next step is to compare these components against RASAero's component breakdown for the same configuration. Case files, solver and scripts are in the CFD folder."
+]

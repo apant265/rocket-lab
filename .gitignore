@@ -1,0 +1,10 @@
+/target/
+/output/
+/outputs/
+/qa_*/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+*.log

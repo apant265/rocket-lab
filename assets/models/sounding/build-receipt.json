@@ -1,0 +1,12 @@
+{
+  "blender": "5.2.0 LTS",
+  "parts": 28,
+  "vertices": 41252,
+  "triangles": 58784,
+  "mission": "C:\\Users\\apant\\workspace\\Rocket Project\\examples\\sounding.json",
+  "outputs": [
+    "rocket.blend",
+    "rocket.glb",
+    "rocket.mesh.json"
+  ]
+}

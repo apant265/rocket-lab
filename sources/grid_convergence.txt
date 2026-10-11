@@ -1,0 +1,12 @@
+Grid convergence (GPU solver): wave drag vs cell size
+
+M5.3:
+  h = 0.4 mm  (10.99 M cells)   Cd_nose = 0.02629   Cd_flare = 0.00093
+  h = 0.6 mm  ( 4.88 M cells)   Cd_nose = 0.02625   Cd_flare = 0.00088
+  h = 0.9 mm  ( 2.17 M cells)   Cd_nose = 0.02617   Cd_flare = 0.00085
+  observed order ~2.00; extrapolated Cd_nose ~ 0.02632; 0.6 mm result differs by -0.2%
+
+M3.0:
+  h = 0.4 mm  (10.99 M cells)   Cd_nose = 0.03264   Cd_flare = 0.00167
+  h = 0.6 mm  ( 4.88 M cells)   Cd_nose = 0.03261   Cd_flare = 0.00161
+  observed order ~1.00; extrapolated Cd_nose ~ 0.03270; 0.6 mm result differs by -0.3%
