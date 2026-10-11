@@ -406,6 +406,8 @@ pub fn export_model(mission: &Mission, out: &std::path::Path) -> Result<()> {
         .args([
             "--background",
             "--factory-startup",
+            "--python-exit-code",
+            "1",
             "--python",
             "scripts/build_model.py",
             "--",

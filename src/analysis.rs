@@ -118,7 +118,7 @@ pub fn fin_stress(
     divisions: usize,
 ) -> Vec<StressPoint> {
     let sample = f.samples.last().expect("recorded flight");
-    let n = divisions.clamp(8, 512);
+    let n = divisions.clamp(8, 1024);
     let pressure = sample.q_pa * 1.2 * sample.alpha_deg.to_radians().sin().abs();
     let mut rows = Vec::new();
     for (stage, s) in f.mission.stages.iter().enumerate().skip(sample.stage) {

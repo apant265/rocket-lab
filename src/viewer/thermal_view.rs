@@ -17,14 +17,25 @@ impl ThermalView {
                 .is_some_and(|h| h.times.last().is_some_and(|t| lab.time <= *t + 1e-9))
     }
 }
-pub(super) fn legend(ui: &mut egui::Ui, view: &mut ThermalView, lab: &Lab) {
-    if !view.covers(lab) {
+pub(super) fn legend(
+    ui: &mut egui::Ui,
+    view: &mut ThermalView,
+    lab: &Lab,
+    w: &snapshot::Snapshots,
+) {
+    if view.revision != Some(lab.model_revision) || view.history.is_none() {
         return;
     }
     ui.checkbox(&mut view.inner, "Inner material temperatures");
-    let stage = analysis::sample_at(&lab.flight, lab.time).stage;
-    let [low, high] =
-        thermal_surface::range(view.history.as_ref().unwrap(), lab.time, view.inner, stage);
+    let time = w.view_time(lab).unwrap_or(lab.time);
+    let stage = analysis::sample_at(&lab.flight, time).stage;
+    let [low, high] = thermal_surface::scoped_range(
+        view.history.as_ref().unwrap(),
+        time,
+        view.inner,
+        stage,
+        w.scope(),
+    );
     ui.small(format!(
         "{} – {}",
         units::value(ui, "Temperature", low, "K", 2),
@@ -48,7 +59,7 @@ pub(super) fn legend(ui: &mut egui::Ui, view: &mut ThermalView, lab: &Lab) {
         );
     }
 }
-pub(super) fn show(ui: &mut egui::Ui, view: &mut ThermalView, lab: &Lab) {
+pub(super) fn show(ui: &mut egui::Ui, view: &mut ThermalView, lab: &Lab, w: &snapshot::Snapshots) {
     if !view.covers(lab) {
         help::hint(
             ui,
@@ -57,7 +68,7 @@ pub(super) fn show(ui: &mut egui::Ui, view: &mut ThermalView, lab: &Lab) {
         return;
     }
     help::status(ui, &view.status);
-    legend(ui, view, lab);
+    legend(ui, view, lab, w);
     let Some(h) = &view.history else {
         ui.spinner();
         return;

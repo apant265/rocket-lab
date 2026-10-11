@@ -1,6 +1,6 @@
 [package]
 name = "rocket-lab"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Deterministic six degree of freedom sounding rocket simulator and Bevy flight laboratory"
 license = "MIT"

@@ -354,7 +354,7 @@ pub fn solve(f: &FlightResult, h: &History, divisions: usize) -> Field {
             let span = g.fin_span_m;
             let x = c.radial_fraction * span;
             let pressure = s.q_pa * 1.2 * s.alpha_deg.to_radians().sin().abs();
-            let n = divisions.clamp(8, 512);
+            let n = divisions.clamp(8, 1024);
             let dx = (span - x) / n as f64;
             let chord = |y: f64| {
                 g.fin_root_chord_m + (g.fin_tip_chord_m - g.fin_root_chord_m) * y / span.max(1e-9)

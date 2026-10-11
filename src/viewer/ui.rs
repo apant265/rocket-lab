@@ -293,11 +293,14 @@ pub(super) fn interface(
                         ui.selectable_value(&mut snapshots.image_view, false, "3D vehicle");
                     });
                     if !snapshots.image_view {
-                        thermal_view::legend(ui, &mut thermal, &lab);
+                        thermal_view::legend(ui, &mut thermal, &lab, &snapshots);
                     }
                 }
+                if lab.tab == 6 && !snapshots.image_view {
+                    snapshot::view_controls(ui, &mut snapshots, &lab);
+                }
                 let image_view = lab.tab == 6 && snapshots.image_view;
-                telemetry(ui, &mut lab, image_view);
+                telemetry(ui, &mut lab, image_view, &snapshots);
             }
         });
     });
@@ -413,7 +416,7 @@ pub(super) fn interface(
     }
     if lab.workspace == 1 && lab.tab == 6 && snapshots.image_view {
         egui::CentralPanel::default().show(ctx, |ui| {
-            snapshot::image_panel(ui, &mut snapshots, &lab, &thermal)
+            snapshot::image_panel(ui, &mut snapshots, &lab, &mut thermal)
         });
     } else {
         egui::Area::new(egui::Id::new("viewport_tools"))
@@ -435,7 +438,10 @@ pub(super) fn interface(
                         }
                         if lab.workspace == 1 {
                             for (i, name) in ["Model", "Pressure", "Airflow", "Thermal", "Stress"].iter().enumerate() {
-                                let clicked=ui.selectable_value(&mut lab.surface_mode,i,*name).clicked();
+                                let computed_flow=snapshots.captured(&lab,snapshot::Mode::Flow).is_some();
+                                if i==2 && computed_flow { continue; }
+                                let label=if i==1 && computed_flow { "CFD" } else { *name };
+                                let clicked=ui.selectable_value(&mut lab.surface_mode,i,label).clicked();
                                 if clicked && i==2 {lab.streamlines=true;}
                                 if clicked && i==3 {thermal.selected_stage=current(&lab).0.stage;}
                                 if clicked && i>0 {
@@ -1531,7 +1537,7 @@ fn conditions(ui: &mut egui::Ui, lab: &mut Lab, job: &mut builder::BuildJob) {
         "The projected arc uses the complete integrated flight for the applied conditions. Wind is deterministic, not a forecast.",
     );
 }
-fn telemetry(ui: &mut egui::Ui, lab: &mut Lab, image_view: bool) {
+fn telemetry(ui: &mut egui::Ui, lab: &mut Lab, image_view: bool, snapshots: &snapshot::Snapshots) {
     let sample = crate::analysis::sample_at(&lab.flight, lab.time);
     if let Some(stage) = lab.followed_stage {
         section(ui, &format!("FOLLOWING DETACHED S{}", stage + 1));
@@ -1625,8 +1631,12 @@ fn telemetry(ui: &mut egui::Ui, lab: &mut Lab, image_view: bool) {
     });
     if !image_view {
         section(ui, "SURFACE VIEW");
-        surface_legend(ui, lab, &sample);
-        ui.checkbox(&mut lab.streamlines, "Airflow paths");
+        if !snapshot::field_legend(ui, snapshots, lab) {
+            surface_legend(ui, lab, &sample);
+        }
+        if snapshots.captured(lab, snapshot::Mode::Flow).is_none() {
+            ui.checkbox(&mut lab.streamlines, "Airflow paths");
+        }
         ui.checkbox(&mut lab.mach_cone, "Mach-angle guide");
         egui::ComboBox::from_label("Focus")
             .selected_text(["Whole vehicle", "Forward body", "Stage fins", "Nose tip"][lab.focus])
@@ -1991,8 +2001,18 @@ mod tests {
                                     outer = ui.available_rect_before_wrap();
                                     inner = sidebar_scroll(ui, |ui| {
                                         for _ in 0..20 {
-                                            units::edit_launch(ui, "Launch elevation / deg", &mut value, 0.1);
-                                            units::edit_launch(ui, "Mean speed / m/s", &mut value, 0.1);
+                                            units::edit_launch(
+                                                ui,
+                                                "Launch elevation / deg",
+                                                &mut value,
+                                                0.1,
+                                            );
+                                            units::edit_launch(
+                                                ui,
+                                                "Mean speed / m/s",
+                                                &mut value,
+                                                0.1,
+                                            );
                                             number(
                                                 ui,
                                                 "Thermal conductivity / W/(m·K)",
@@ -2003,7 +2023,11 @@ mod tests {
                                     })
                                     .inner_rect;
                                 });
-                            assert!((panel.response.rect.width() - width).abs() < 0.5, "sidebar {width} grew to {} on frame {frame}", panel.response.rect.width());
+                            assert!(
+                                (panel.response.rect.width() - width).abs() < 0.5,
+                                "sidebar {width} grew to {} on frame {frame}",
+                                panel.response.rect.width()
+                            );
                         },
                     );
                     if frame < 2 {
@@ -2019,11 +2043,21 @@ mod tests {
                             let rect = text.galley.rect.translate(text.pos.to_vec2());
                             if rect.intersects(inner) {
                                 if text.galley.job.text == "mph" {
-                                    assert!(text.galley.job.sections.iter().all(|s| s.format.font_id.size >= 20.), "launch units must be larger");
+                                    assert!(
+                                        text.galley.job.sections.iter().all(|s| s
+                                            .format
+                                            .font_id
+                                            .size
+                                            >= 20.),
+                                        "launch units must be larger"
+                                    );
                                 }
                                 assert!(rect.left() >= inner.left() - 0.5, "left-clipped text");
                                 if text.galley.job.text == "Launch elevation" {
-                                    assert!((rect.left() - inner.left()).abs() < 0.5, "labels must stay left-aligned");
+                                    assert!(
+                                        (rect.left() - inner.left()).abs() < 0.5,
+                                        "labels must stay left-aligned"
+                                    );
                                 }
                                 assert!(
                                     rect.right() <= inner.right() + 0.5,

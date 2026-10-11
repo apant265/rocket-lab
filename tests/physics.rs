@@ -97,6 +97,44 @@ fn hpr_flight_lands_under_main() {
     );
 }
 #[test]
+fn staging_records_both_new_cg_frames_between_regular_telemetry_samples() {
+    let mut mission = calm(true);
+    mission.duration = 18.0;
+    mission.sample_period = 1.113;
+    mission.stages[0].separation = Trigger::Time { time_s: 2.037 };
+    let flight = Simulator::new(mission).unwrap().run();
+    let separations: Vec<_> = flight
+        .events
+        .iter()
+        .filter(|e| e.kind == "separation")
+        .collect();
+    assert_eq!(separations.len(), 2);
+    for event in separations {
+        let retained = flight
+            .samples
+            .iter()
+            .find(|s| s.time_s == event.time_s)
+            .expect("exact retained staging sample");
+        assert_eq!(retained.stage, event.stage);
+        assert!(
+            flight
+                .debris_samples
+                .iter()
+                .any(|s| s.time_s == event.time_s && s.stage + 1 == event.stage)
+        );
+        assert_eq!(
+            rocket_lab::analysis::sample_at(&flight, event.time_s).stage,
+            event.stage
+        );
+        assert_eq!(
+            rocket_lab::analysis::sample_at(&flight, event.time_s - 1e-6).stage,
+            event.stage - 1
+        );
+    }
+    assert!(flight.samples.windows(2).all(|w| w[0].time_s < w[1].time_s));
+}
+
+#[test]
 fn staged_sounding_flight_crosses_all_regimes() {
     let mut m = calm(true);
     m.duration = 220.0;

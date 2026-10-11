@@ -212,8 +212,8 @@ pub fn prepare(flight: &FlightResult) -> Problem {
     prepare_with_resolution(flight, Resolution::default())
 }
 pub fn prepare_with_resolution(flight: &FlightResult, resolution: Resolution) -> Problem {
-    let axial = resolution.axial_cells.clamp(8, 128);
-    let fins = resolution.fin_cells.clamp(2, 32);
+    let axial = resolution.axial_cells.clamp(8, 256);
+    let fins = resolution.fin_cells.clamp(2, 64);
     let step = if resolution.max_step_s.is_finite() {
         resolution.max_step_s.clamp(0.001, 0.05)
     } else {
@@ -233,14 +233,15 @@ pub fn prepare_with_resolution(flight: &FlightResult, resolution: Resolution) ->
         if nose > 0. && nose < s.length_m {
             bounds.push(nose);
         }
-        if materials.component_shell {
+        {
             for p in s.components.iter().filter(|p| {
                 matches!(
                     p.kind,
                     crate::assembly::PartKind::BodyTube
                         | crate::assembly::PartKind::NoseCone
                         | crate::assembly::PartKind::Transition
-                )
+                ) && (materials.component_shell
+                    || p.kind == crate::assembly::PartKind::Transition && p.position_m.abs() < 1e-6)
             }) {
                 bounds.extend(
                     [p.position_m, p.position_m + p.length_m].map(|x| x.clamp(0., s.length_m)),
@@ -266,21 +267,29 @@ pub fn prepare_with_resolution(flight: &FlightResult, resolution: Resolution) ->
             } else {
                 &materials.airframe
             };
-            if materials.component_shell
-                && let Some(part) = s.components.iter().find(|p| {
-                    matches!(
-                        p.kind,
-                        crate::assembly::PartKind::BodyTube
-                            | crate::assembly::PartKind::NoseCone
-                            | crate::assembly::PartKind::Transition
-                    ) && station >= p.position_m
-                        && station <= p.position_m + p.length_m
-                })
-            {
+            let shell_part = s.components.iter().find(|p| {
+                matches!(
+                    p.kind,
+                    crate::assembly::PartKind::BodyTube
+                        | crate::assembly::PartKind::NoseCone
+                        | crate::assembly::PartKind::Transition
+                ) && (materials.component_shell
+                    || p.kind == crate::assembly::PartKind::Transition && p.position_m.abs() < 1e-6)
+                    && station >= p.position_m
+                    && station <= p.position_m + p.length_m
+            });
+            if let Some(part) = shell_part {
                 material = &part.material;
                 t = part.thickness_m;
             }
             let radius = |x: f64| {
+                if let Some(part) =
+                    shell_part.filter(|p| p.kind == crate::assembly::PartKind::Transition)
+                {
+                    let u = ((x - part.position_m) / part.length_m).clamp(0.0, 1.0);
+                    return (part.fore_diameter_m + (part.diameter_m - part.fore_diameter_m) * u)
+                        * 0.5;
+                }
                 if x >= nose || nose <= 0.0 {
                     r
                 } else {
@@ -298,7 +307,9 @@ pub fn prepare_with_resolution(flight: &FlightResult, resolution: Resolution) ->
             let slope = (radius((station + dx * 0.1).min(s.length_m))
                 - radius((station - dx * 0.1).max(0.0)))
                 / (dx * 0.2);
-            let incidence = if is_nose {
+            let incidence = if is_nose
+                || shell_part.is_some_and(|p| p.kind == crate::assembly::PartKind::Transition)
+            {
                 slope.abs() / slope.hypot(1.0)
             } else {
                 0.0
@@ -368,6 +379,10 @@ pub fn prepare_with_resolution(flight: &FlightResult, resolution: Resolution) ->
             }
         }
         for part in &s.components {
+            // A front reducer is already resolved by the axial shell grid.
+            if part.kind == crate::assembly::PartKind::Transition && part.position_m.abs() < 1e-6 {
+                continue;
+            }
             if materials.component_shell
                 && matches!(
                     part.kind,

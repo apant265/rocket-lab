@@ -47,6 +47,10 @@ foreach ($relative in @('model-flight-check.json','model-native-check.json','mod
     if (Test-Path -LiteralPath $from) {Copy-Item -LiteralPath $from -Destination $evidenceDest.FullName}
 }
 $snapshotRoot = Join-Path $projectRoot 'output/snapshots'
+foreach ($relative in @('shared-fields-native-check.json','shared-fields-gpu-test.log','shared-fields-cfd-2d.jpg','shared-fields-cfd-3d.jpg','shared-fields-thermal-2d.jpg','shared-fields-thermal-3d.jpg','shared-fields-stress-2d.jpg','shared-fields-stress-3d.jpg','staging-check.json','transition-check.json','transition-all-tests.log','transition-clippy.log','transition-cfd-2d.jpg','transition-model-3d.jpg','transition-model-build.log','release-v0.1.1-tests.log','release-v0.1.1-clippy.log','release-v0.1.1-build.log')) {
+    $from = Join-Path $projectRoot "output/$relative"
+    if (Test-Path -LiteralPath $from) {Copy-Item -LiteralPath $from -Destination $evidenceDest.FullName}
+}
 foreach ($relative in @('sidebar-tests.log','sidebar-clippy.log','sidebar-build.log','sidebar-native-errors.log','sidebar-dark.jpg','sidebar-light.jpg','sidebar-parts.jpg','sidebar-native-check.json','detail-all-tests.log','detail-viewer-final-tests.log','detail-gpu-thermal-test.log','detail-clippy.log','detail-build.log','detail-native-errors.log','detail-ultra-flow.png','detail-ultra-flow-motion.png','detail-ultra-thermal.png','detail-smooth-nose.png','detail-native-check.json')) {
     $from = Join-Path $projectRoot "output/$relative"
     if (Test-Path -LiteralPath $from) {Copy-Item -LiteralPath $from -Destination $evidenceDest.FullName}
@@ -74,7 +78,9 @@ if (Test-Path -LiteralPath $snapshotRoot) {
 @'
 # Runnable Windows bundle
 
-Analysis detail is expanded: Ultra flow computes 2048 × 1024 cells over 32,000 iterations. Fine uses 1024 × 512, Standard 384 × 256. Flow motion defaults on in the 2D CFD view, with smooth texture sampling and animated RK2 trails through the captured velocity field. The displayed rocket uses a continuous nose/body/transition silhouette at every zoom; PNG edges use subpixel coverage. Texture-only wall-cell gaps sample nearby fluid values, while hover/CSV retain the actual grid mask. The numerical wall remains Cartesian. Display playback slows the flow; it is not a transient liquid or turbulence simulation. Ultra thermal uses 128 body/nose and 32 fin columns per stage; the GPU supports 1024 material columns. Structural and external wall meshes also refine. Larger jobs retain elapsed time and ETA reporting. Raw numerical outputs remain full resolution.
+Analysis detail is expanded: Ultra flow computes 2048 × 1024 cells over 32,000 iterations. Fine uses 1024 × 512, Standard 384 × 256. Flow motion defaults on in the 2D CFD view, with smooth texture sampling and animated RK2 trails through the captured velocity field. The displayed rocket uses a continuous nose/body/transition silhouette at every zoom; PNG edges use subpixel coverage. Texture-only wall-cell gaps sample nearby fluid values, while hover/CSV retain the actual grid mask. The numerical wall remains Cartesian. Display playback slows the flow; it is not a transient liquid or turbulence simulation. Ultra thermal uses 256 body/nose and 64 fin columns per stage, with a maximum diffusion step of 0.001 s; the GPU supports 1024 material columns. Ultra fin stress uses 1024 integration divisions. Structural and external wall meshes also refine. Larger jobs retain elapsed time and ETA reporting. Raw numerical outputs remain full resolution.
+
+The 2D and 3D views share computed CFD scalars, thermal/stress mappings, color scales and layer choices. Thermal and stress vehicle views use smooth colored triangles; the 3D CFD view also shows the computed planar slice. Separation preserves each section's displayed position at its physical joint. The default Kate and Anvil model includes round conical transitions, matching CFD profiles and material-dependent thermal sections. See docs/builder-and-flight.md for transition dimensions and material assumptions.
 
 Extract the entire folder and double-click Launch.cmd. The default is the supplied three-stage desert study with a 5 lb Kate and Anvil payload. Open Simulate for flight timestamp analysis. Run rocket-lab.exe view --mission examples/advanced-laboratory.json for the example moving-canopy, terrain/profile and material extensions.
 
@@ -93,6 +99,8 @@ The GPU solver is planar perfect-gas inviscid Euler, not full 3D viscous hyperso
 $manifest = [ordered]@{
     created_utc = (Get-Date).ToUniversalTime().ToString('o')
     executable_sha256 = (Get-FileHash -LiteralPath (Join-Path $bundle 'rocket-lab.exe') -Algorithm SHA256).Hash
+    source_commit = (& git -C $projectRoot rev-parse HEAD)
+    executable_version = (& $exe --version)
     build = 'Windows x64 Rust 1.91.1; viewer-enabled dev profile optimized; Bevy 0.18.1'
     contents = @(Get-ChildItem -LiteralPath $bundle -Recurse -File | ForEach-Object { $_.FullName.Substring($bundle.Length + 1) })
 }

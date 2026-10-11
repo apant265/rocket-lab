@@ -363,11 +363,11 @@ pub(super) fn locate(draft: &Mission, payload: DropPart, station: f64) -> Placem
         station: station.clamp(0.0, s.length_m - length),
     }
 }
-struct Piece {
-    mesh: Mesh,
-    position: Vec3,
-    color: Color,
-    internal: bool,
+pub(super) struct Piece {
+    pub(super) mesh: Mesh,
+    pub(super) position: Vec3,
+    pub(super) color: Color,
+    pub(super) internal: bool,
     component: Option<usize>,
     builtin: usize,
 }
@@ -712,6 +712,18 @@ fn builtin(s: &crate::config::Stage, index: usize) -> Vec<Piece> {
             p
         })
         .collect()
+}
+/// Use the builder's actual parts for flight previews without an exported mesh.
+pub(super) fn flight_pieces(stage: &crate::config::Stage) -> Vec<Piece> {
+    let explicit = stage.materials.as_ref().is_some_and(|m| m.component_shell);
+    let mut pieces: Vec<_> = if explicit {
+        Vec::new()
+    } else {
+        (0..=2).flat_map(|i| builtin(stage, i)).collect()
+    };
+    pieces.extend(stage.components.iter().flat_map(extra_instances));
+    pieces.retain(|p| !p.internal);
+    pieces
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn update(
@@ -1126,6 +1138,28 @@ mod tests {
             false,
         );
         assert!((bounds.max.y + p.length_m as f32).abs() < 1e-5);
+        let station = p.length_m as f32 * 0.25;
+        let distance = flight_pieces(s)
+            .iter()
+            .filter_map(|piece| {
+                PickMesh::new(
+                    &piece.mesh,
+                    piece.position,
+                    1.0,
+                    Selection {
+                        stage: 0,
+                        builtin: 0,
+                        component: None,
+                    },
+                    false,
+                )
+                .hit(Vec3::new(0.0, -station, 5.0), -Vec3::Z)
+            })
+            .reduce(f32::min)
+            .unwrap();
+        let expected_radius =
+            (p.fore_diameter_m + (p.diameter_m - p.fore_diameter_m) * 0.25) as f32 * 0.5;
+        assert!((distance - (5.0 - expected_radius)).abs() < 1e-5);
         assert!(
             bounds
                 .hit(Vec3::new(0.0, -p.length_m as f32 * 0.5, 5.0), -Vec3::Z)

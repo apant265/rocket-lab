@@ -1721,6 +1721,9 @@ impl Simulator {
                 upper
             ),
         );
+        // Playback needs both new CG frames at the exact staging instant, even
+        // when the regular telemetry period does not coincide with the trigger.
+        self.record();
     }
     fn record(&mut self) {
         if self

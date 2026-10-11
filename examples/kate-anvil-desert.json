@@ -1,6 +1,6 @@
 {
   "name": "Kate and Anvil / 5 lb desert study",
-  "description": "User payload: Kate and Anvil, 5 lb combined. Allocated out of older CDX1 assembled dry mass; payload CG is assumed. Source motor curves with provisional synthetic aerodynamics. Illustrative New Mexico desert coordinates and site height, not a verified launch location. Booster recovery areas are engineering assumptions.",
+  "description": "User payload: Kate and Anvil, 5 lb combined. Allocated out of older CDX1 assembled dry mass; payload CG is assumed. Source motor curves with provisional synthetic aerodynamics. Illustrative New Mexico desert coordinates and site height, not a verified launch location. Booster recovery areas are engineering assumptions. Editable interstage conical tapers use the supplied OpenRocket lengths, reconciled to adjacent stage diameters; nominal component masses are allocated from the existing assembled dry measurements.",
   "dt": 0.005,
   "duration": 1200.0,
   "sample_period": 0.1,
@@ -25,8 +25,8 @@
       "name": "Bottom booster / O6000W",
       "length_m": 1.5748,
       "diameter_m": 0.156718,
-      "dry_mass_kg": 16.82850687200001,
-      "dry_cg_m": 1.1585073167972715,
+      "dry_mass_kg": 16.592435168736586,
+      "dry_cg_m": 1.1739060288689156,
       "payload_mass_kg": 0.0,
       "payload_cg_m": 0.23621999999999999,
       "motor": {
@@ -292,14 +292,40 @@
           "max_load_n": 30000
         },
         "main_altitude_agl_m": 304.8
-      }
+      },
+      "components": [
+        {
+          "kind": "transition",
+          "name": "Interstage transition",
+          "position_m": 0.0,
+          "length_m": 0.1524,
+          "fore_diameter_m": 0.1062228,
+          "diameter_m": 0.156718,
+          "thickness_m": 0.002,
+          "material": {
+            "name": "Fiberglass / G10",
+            "density_kg_m3": 1850.0,
+            "thermal": {
+              "conductivity_w_m_k": 0.3,
+              "specific_heat_j_kg_k": 900.0,
+              "emissivity": 0.85,
+              "limit_temperature_k": 423.15
+            }
+          },
+          "mass_override": false,
+          "mass_kg": 0.2360717032634225,
+          "cg_override": false,
+          "cg_m": 0.0762,
+          "comments": "Taper length from supplied OpenRocket design (6 in / 2.5 in). Fore diameter matched to the current upper stage. G10 wall is an editable engineering assumption. Mass allocated from the existing assembled dry measurement."
+        }
+      ]
     },
     {
       "name": "Upper booster / O3400-IM-P",
       "length_m": 1.2827,
       "diameter_m": 0.1062228,
-      "dry_mass_kg": 10.636511471,
-      "dry_cg_m": 0.9717069957766794,
+      "dry_mass_kg": 10.55958485276283,
+      "dry_cg_m": 0.9785545862815799,
       "payload_mass_kg": 0.0,
       "payload_cg_m": 0.192405,
       "motor": {
@@ -497,7 +523,33 @@
           "max_load_n": 30000
         },
         "main_altitude_agl_m": 304.8
-      }
+      },
+      "components": [
+        {
+          "kind": "transition",
+          "name": "Interstage transition",
+          "position_m": 0.0,
+          "length_m": 0.0635,
+          "fore_diameter_m": 0.10210799999999999,
+          "diameter_m": 0.1062228,
+          "thickness_m": 0.002,
+          "material": {
+            "name": "Fiberglass / G10",
+            "density_kg_m3": 1850.0,
+            "thermal": {
+              "conductivity_w_m_k": 0.3,
+              "specific_heat_j_kg_k": 900.0,
+              "emissivity": 0.85,
+              "limit_temperature_k": 423.15
+            }
+          },
+          "mass_override": false,
+          "mass_kg": 0.0769266182371703,
+          "cg_override": false,
+          "cg_m": 0.03175,
+          "comments": "Taper length from supplied OpenRocket design (6 in / 2.5 in). Fore diameter matched to the current upper stage. G10 wall is an editable engineering assumption. Mass allocated from the existing assembled dry measurement."
+        }
+      ]
     },
     {
       "name": "Sustainer / N5800-CS",

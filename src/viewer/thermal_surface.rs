@@ -3,57 +3,157 @@
 use super::*;
 use crate::thermal;
 
-pub(super) fn column(
-    h: &thermal::History,
-    mission: &Mission,
-    stage: usize,
-    kind: &str,
-    component: Option<usize>,
-    vertex: [f64; 3],
-) -> Option<usize> {
-    let s = mission.stages.get(stage)?;
-    let component_name = component
-        .and_then(|i| s.components.get(i))
-        .map(|p| p.name.as_str());
-    let region = if kind == "body" || kind == "nose" {
-        kind
-    } else {
-        component_name
-            .filter(|name| {
-                h.columns
-                    .iter()
-                    .any(|c| c.stage == stage && c.kind == *name)
+/// Spatial interpolation stays inside the selected component and material.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Blend {
+    pub a: usize,
+    pub b: usize,
+    pub u: f64,
+}
+impl Blend {
+    pub fn value(self, values: &[Option<f64>]) -> Option<f64> {
+        let a = *values.get(self.a)?.as_ref()?;
+        if self.a == self.b {
+            return Some(a);
+        }
+        Some(a * (1. - self.u) + *values.get(self.b)?.as_ref()? * self.u)
+    }
+}
+pub(super) struct Mapping<'a> {
+    h: &'a thermal::History,
+    columns: Vec<usize>,
+    offset: f64,
+    radius: f64,
+    span: f64,
+    fin: bool,
+    continuous: Vec<bool>,
+}
+impl<'a> Mapping<'a> {
+    pub fn new(
+        h: &'a thermal::History,
+        mission: &Mission,
+        stage: usize,
+        kind: &str,
+        component: Option<usize>,
+    ) -> Self {
+        let s = &mission.stages[stage];
+        let part = component.and_then(|i| s.components.get(i));
+        let region = if kind == "body" || kind == "nose" {
+            kind
+        } else {
+            part.map(|p| p.name.as_str())
+                .filter(|name| {
+                    h.columns
+                        .iter()
+                        .any(|c| c.stage == stage && c.kind == *name)
+                })
+                .unwrap_or(kind)
+        };
+        let fin = region == "fin";
+        let mut columns: Vec<_> = h
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| {
+                c.stage == stage
+                    && c.kind == region
+                    && part.is_none_or(|p| {
+                        fin || c.station_m >= p.position_m - 1e-6
+                            && c.station_m <= p.position_m + p.length_m + 1e-6
+                    })
             })
-            .unwrap_or(kind)
-    };
-    let offset = mission.stages[stage + 1..]
-        .iter()
-        .map(|s| s.length_m)
-        .sum::<f64>();
-    let station = -vertex[1] - offset;
-    let fraction = s.geometry.as_ref().map(|g| {
-        ((vertex[0].hypot(vertex[2]) - s.diameter_m * 0.5) / g.fin_span_m.max(1e-9)).clamp(0., 1.)
-    });
-    h.columns
-        .iter()
-        .enumerate()
-        .filter(|(_, c)| {
-            c.stage == stage
-                && c.kind == region
-                && c.axial_bounds_m
-                    .is_none_or(|b| station >= b[0] - 1e-6 && station <= b[1] + 1e-6)
-        })
-        .min_by(|(_, a), (_, b)| {
-            let distance = |c: &thermal::Column| {
-                if region == "fin" {
-                    (c.radial_fraction - fraction.unwrap_or(0.)).abs()
+            .map(|(i, _)| i)
+            .collect();
+        columns.sort_by(|a, b| {
+            let coordinate = |i: usize| {
+                if fin {
+                    h.columns[i].radial_fraction
                 } else {
-                    (c.station_m - station).abs()
+                    h.columns[i].station_m
                 }
             };
-            distance(a).total_cmp(&distance(b))
+            coordinate(*a).total_cmp(&coordinate(*b))
+        });
+        let continuous = columns
+            .windows(2)
+            .map(|pair| {
+                let a = &h.columns[pair[0]];
+                let b = &h.columns[pair[1]];
+                a.thickness_m == b.thickness_m
+                    && serde_json::to_value(&a.material).ok()
+                        == serde_json::to_value(&b.material).ok()
+                    && (fin
+                        || a.axial_bounds_m
+                            .zip(b.axial_bounds_m)
+                            .is_none_or(|(a, b)| (a[1] - b[0]).abs() < 1e-6))
+            })
+            .collect();
+        Self {
+            h,
+            columns,
+            continuous,
+            offset: mission.stages[stage + 1..].iter().map(|s| s.length_m).sum(),
+            radius: s.diameter_m * 0.5,
+            span: s.geometry.as_ref().map_or(1., |g| g.fin_span_m.max(1e-9)),
+            fin,
+        }
+    }
+    pub fn at(&self, v: [f64; 3]) -> Option<Blend> {
+        if self.columns.is_empty() {
+            return None;
+        }
+        let x = if self.fin {
+            ((v[0].hypot(v[2]) - self.radius) / self.span).clamp(0., 1.)
+        } else {
+            -v[1] - self.offset
+        };
+        let coordinate = |i: usize| {
+            if self.fin {
+                self.h.columns[i].radial_fraction
+            } else {
+                self.h.columns[i].station_m
+            }
+        };
+        let hi = self
+            .columns
+            .partition_point(|&i| coordinate(i) < x)
+            .min(self.columns.len() - 1);
+        let lo = hi.saturating_sub(1);
+        let a = self.columns[lo];
+        let b = self.columns[hi];
+        let nearest = if (coordinate(a) - x).abs() <= (coordinate(b) - x).abs() {
+            a
+        } else {
+            b
+        };
+        let contained = |i: usize| {
+            self.fin
+                || self.h.columns[i]
+                    .axial_bounds_m
+                    .is_none_or(|r| x >= r[0] - 1e-6 && x <= r[1] + 1e-6)
+        };
+        let selected = if contained(nearest) {
+            nearest
+        } else if contained(a) {
+            a
+        } else if contained(b) {
+            b
+        } else {
+            return None;
+        };
+        if a == b || !self.continuous[lo] {
+            return Some(Blend {
+                a: selected,
+                b: selected,
+                u: 0.,
+            });
+        }
+        Some(Blend {
+            a,
+            b,
+            u: ((x - coordinate(a)) / (coordinate(b) - coordinate(a)).max(1e-12)).clamp(0., 1.),
         })
-        .map(|(i, _)| i)
+    }
 }
 pub(super) fn temperature(h: &thermal::History, index: usize, time: f64, inner: bool) -> f64 {
     let frame = h.frame(time);
@@ -63,12 +163,21 @@ pub(super) fn temperature(h: &thermal::History, index: usize, time: f64, inner: 
     h.temperatures[frame][index][layer] * (1. - u) + h.temperatures[next][index][layer] * u
 }
 pub(super) fn range(h: &thermal::History, time: f64, inner: bool, active_stage: usize) -> [f64; 2] {
+    scoped_range(h, time, inner, active_stage, None)
+}
+pub(super) fn scoped_range(
+    h: &thermal::History,
+    time: f64,
+    inner: bool,
+    active_stage: usize,
+    only: Option<usize>,
+) -> [f64; 2] {
     let mut range = [f64::INFINITY, f64::NEG_INFINITY];
     for (i, _) in h
         .columns
         .iter()
         .enumerate()
-        .filter(|(_, c)| c.stage >= active_stage)
+        .filter(|(_, c)| only.map_or(c.stage >= active_stage, |s| c.stage == s))
     {
         let t = temperature(h, i, time, inner);
         range[0] = range[0].min(t);
@@ -83,6 +192,7 @@ pub(super) fn range(h: &thermal::History, time: f64, inner: bool, active_stage: 
     range
 }
 
+pub(super) type Face = ([[f64; 3]; 3], [Option<Blend>; 3]);
 pub(super) struct ShapeRaster {
     pub width: usize,
     pub height: usize,
@@ -90,6 +200,10 @@ pub(super) struct ShapeRaster {
     pub y: [f64; 2],
     pub covered: Vec<bool>,
     pub columns: Vec<Option<usize>>,
+    pub blends: Vec<Option<Blend>>,
+    pub faces: Vec<Face>,
+    pub first_stage: usize,
+    pub only: Option<usize>,
 }
 impl ShapeRaster {
     pub fn new(
@@ -120,10 +234,10 @@ impl ShapeRaster {
         let margin = (x[1] - x[0]) * 0.015;
         x = [x[0] - margin, x[1] + margin];
         y = [y[0] - margin, y[1] + margin];
-        let width = 1536;
+        let width = 4096;
         let height = ((y[1] - y[0]) / (x[1] - x[0]) * width as f64)
             .ceil()
-            .clamp(64., 768.) as usize;
+            .clamp(128., 2048.) as usize;
         let mut out = Self {
             width,
             height,
@@ -131,9 +245,20 @@ impl ShapeRaster {
             y,
             covered: vec![false; width * height],
             columns: vec![None; width * height],
+            blends: vec![None; width * height],
+            faces: Vec::new(),
+            first_stage,
+            only,
         };
         let mut depth = vec![f64::NEG_INFINITY; width * height];
         for p in parts {
+            let mapping = Mapping::new(h, mission, p.stage, &p.kind, p.component_index);
+            let refined = field_mesh::refined(p, mission);
+            for triangle in refined.indices.chunks_exact(3) {
+                let vertices =
+                    std::array::from_fn(|i| refined.positions[triangle[i] as usize].map(f64::from));
+                out.faces.push((vertices, vertices.map(|v| mapping.at(v))));
+            }
             for triangle in p.indices.chunks_exact(3) {
                 let vertices: [[f64; 3]; 3] =
                     std::array::from_fn(|i| p.positions[triangle[i] as usize].map(f64::from));
@@ -187,12 +312,16 @@ impl ShapeRaster {
                         }
                         depth[n] = vertex[2];
                         out.covered[n] = true;
-                        out.columns[n] =
-                            column(h, mission, p.stage, &p.kind, p.component_index, vertex);
+                        out.blends[n] = mapping.at(vertex);
+                        out.columns[n] = out.blends[n].map(|b| if b.u < 0.5 { b.a } else { b.b });
                     }
                 }
             }
         }
+        out.faces.sort_by(|a, b| {
+            let depth = |face: &Face| face.0.iter().map(|v| v[2]).sum::<f64>();
+            depth(a).total_cmp(&depth(b))
+        });
         Some(out)
     }
 }

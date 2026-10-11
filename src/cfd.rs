@@ -87,44 +87,48 @@ pub fn body_radius(m: &Mission, active: usize, x: f64) -> f64 {
             } else {
                 s.diameter_m * 0.5
             };
-            let r = if s.materials.as_ref().is_some_and(|m| m.component_shell) {
-                s.components
-                    .iter()
-                    .filter(|p| {
-                        matches!(
-                            p.kind,
-                            crate::assembly::PartKind::BodyTube
-                                | crate::assembly::PartKind::NoseCone
-                                | crate::assembly::PartKind::Transition
-                        ) && local >= p.position_m
-                            && local <= p.position_m + p.length_m
-                    })
-                    .map(|p| {
-                        let u = (local - p.position_m) / p.length_m;
-                        let aft = p.diameter_m * 0.5;
-                        match p.kind {
-                            crate::assembly::PartKind::NoseCone => {
-                                aft * crate::design::nose_radius_fraction(
-                                    p.shape
-                                        .as_ref()
-                                        .map_or(crate::config::NoseShape::Conical, |g| {
-                                            g.nose_shape
-                                        }),
-                                    u,
-                                    p.length_m / aft,
-                                )
-                            }
-                            crate::assembly::PartKind::Transition => {
-                                p.fore_diameter_m * 0.5 + (aft - p.fore_diameter_m * 0.5) * u
-                            }
-                            _ => aft,
-                        }
-                    })
-                    .fold(0.0, f64::max)
+            let explicit = s.materials.as_ref().is_some_and(|m| m.component_shell);
+            // A front reducer replaces this section of the implicit cylinder,
+            // just as it does in the editor and headless Blender export.
+            let front = crate::assembly::airframe_front_m(s).max(g.nose_length_m);
+            let shell = if explicit || local >= g.nose_length_m && local < front {
+                0.0
             } else {
                 r
             };
-            return r;
+            let components = s
+                .components
+                .iter()
+                .filter(|p| {
+                    matches!(
+                        p.kind,
+                        crate::assembly::PartKind::BodyTube
+                            | crate::assembly::PartKind::NoseCone
+                            | crate::assembly::PartKind::Transition
+                    ) && local >= p.position_m
+                        && local <= p.position_m + p.length_m
+                })
+                .map(|p| {
+                    let u = (local - p.position_m) / p.length_m;
+                    let aft = p.diameter_m * 0.5;
+                    match p.kind {
+                        crate::assembly::PartKind::NoseCone => {
+                            aft * crate::design::nose_radius_fraction(
+                                p.shape
+                                    .as_ref()
+                                    .map_or(crate::config::NoseShape::Conical, |g| g.nose_shape),
+                                u,
+                                p.length_m / aft,
+                            )
+                        }
+                        crate::assembly::PartKind::Transition => {
+                            p.fore_diameter_m * 0.5 + (aft - p.fore_diameter_m * 0.5) * u
+                        }
+                        _ => aft,
+                    }
+                })
+                .fold(0.0, f64::max);
+            return shell.max(components);
         }
         offset += s.length_m;
     }

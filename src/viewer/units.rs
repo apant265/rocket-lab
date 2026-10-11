@@ -218,12 +218,24 @@ pub(super) fn formatted(ui: &egui::Ui, label: &str, value: &str) -> (String, Str
 }
 /// Scrub, type or step; write back only after a real edit to prevent conversion drift.
 pub(super) fn edit(ui: &mut egui::Ui, label: &str, stored: &mut f64, speed: f64) -> bool {
-    edit_with_unit_font(ui, label, stored, speed, egui::TextStyle::Small.resolve(ui.style()))
+    edit_with_unit_font(
+        ui,
+        label,
+        stored,
+        speed,
+        egui::TextStyle::Small.resolve(ui.style()),
+    )
 }
 pub(super) fn edit_launch(ui: &mut egui::Ui, label: &str, stored: &mut f64, speed: f64) -> bool {
     edit_with_unit_font(ui, label, stored, speed, egui::FontId::proportional(20.))
 }
-fn edit_with_unit_font(ui: &mut egui::Ui, label: &str, stored: &mut f64, speed: f64, unit_font: egui::FontId) -> bool {
+fn edit_with_unit_font(
+    ui: &mut egui::Ui,
+    label: &str,
+    stored: &mut f64,
+    speed: f64,
+    unit_font: egui::FontId,
+) -> bool {
     let (name, c) = system(ui).field(label);
     let mut shown = c.display(*stored);
     let raw_step = (speed * c.scale.abs()).max(1e-8);

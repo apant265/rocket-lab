@@ -5,24 +5,7 @@ mod flow_geometry;
 #[path = "flow_trails.rs"]
 mod flow_trails;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum FlowField {
-    #[default]
-    Cp,
-    Pressure,
-    Speed,
-    Mach,
-}
-impl FlowField {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Cp => "Pressure coefficient",
-            Self::Pressure => "Pressure / kPa",
-            Self::Speed => "Air speed / m/s",
-            Self::Mach => "Mach",
-        }
-    }
-}
+use crate::viewer::analysis_fields::{self, FlowField};
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum ThermalImage {
     #[default]
@@ -38,12 +21,11 @@ enum StressImage {
 }
 #[derive(Default)]
 pub(super) struct Images {
-    field: FlowField,
+    pub(super) field: FlowField,
     thermal_mode: ThermalImage,
     stress_mode: StressImage,
-    shape_stage: Option<usize>,
+    pub(super) shape_stage: Option<usize>,
     shape_cache: Option<(String, thermal_surface::ShapeRaster)>,
-    inner: bool,
     stage: usize,
     vectors: bool,
     motion_paused: bool,
@@ -54,6 +36,12 @@ pub(super) struct Images {
     status: String,
 }
 impl Images {
+    pub(in crate::viewer) fn field(&self) -> FlowField {
+        self.field
+    }
+    pub(in crate::viewer) fn scope(&self) -> Option<usize> {
+        self.shape_stage
+    }
     pub(super) fn invalidate(&mut self) {
         self.cache = None;
         self.shape_cache = None;
@@ -65,6 +53,7 @@ impl Images {
 struct FieldMap {
     width: usize,
     height: usize,
+    vector_mesh: Option<egui::Mesh>,
     values: Vec<Option<f64>>,
     coverage: Option<Vec<bool>>,
     source_columns: Option<Vec<Option<usize>>>,
@@ -97,6 +86,7 @@ impl FieldMap {
             self.range = self.range.map(|v| c.display(v));
             self.unit = c.unit;
         }
+        self.title = system.label(&self.title);
         let x_name = self
             .x_label
             .split_once(" / ")
@@ -204,61 +194,15 @@ impl FieldMap {
 /// Fill texture-only wall cells from the closest solved fluid row in the same
 /// column. The continuous body hides its interior; numerical hover/CSV stay raw.
 fn reconstruct_wall_display(map: &FieldMap) -> Vec<Option<f64>> {
-    let mut display = map.values.clone();
-    let mut distances = vec![usize::MAX; map.height];
-    for column in 0..map.width {
-        let mut previous = None;
-        for (row, distance) in distances.iter_mut().enumerate() {
-            let index = row * map.width + column;
-            if let Some(value) = map.values[index] {
-                previous = Some((row, value));
-                *distance = 0;
-            } else if let Some((source, value)) = previous {
-                *distance = row - source;
-                display[index] = Some(value);
-            } else {
-                *distance = usize::MAX;
-            }
-        }
-        let mut next = None;
-        for row in (0..map.height).rev() {
-            let index = row * map.width + column;
-            if let Some(value) = map.values[index] {
-                next = Some((row, value));
-            } else if let Some((source, value)) = next
-                && source - row < distances[row]
-            {
-                display[index] = Some(value);
-            }
-        }
-    }
-    display
+    analysis_fields::fill_wall(&map.values, map.width, map.height)
 }
+
 fn flow_map(f: &crate::cfd::Solution, field: FlowField) -> FieldMap {
     let p = &f.problem;
-    let far_pressure = crate::cfd::pressure(p.far);
-    let q = 0.5 * (p.far[1].powi(2) + p.far[2].powi(2)) / p.far[0];
-    let mut values = Vec::with_capacity(p.nx * p.ny);
-    for j in (0..p.ny).rev() {
-        for i in 0..p.nx {
-            let n = j * p.nx + i;
-            if p.solid[n] {
-                values.push(None);
-                continue;
-            }
-            let c = f.cells[n];
-            let pressure = crate::cfd::pressure(c);
-            let speed = c[1].hypot(c[2]) / c[0];
-            let v = match field {
-                FlowField::Cp => (pressure - far_pressure) / q.max(1e-12),
-                FlowField::Pressure => pressure / 1000.0,
-                FlowField::Speed => speed,
-                FlowField::Mach => speed / (crate::cfd::GAMMA * pressure / c[0]).sqrt(),
-            };
-            values.push(v.is_finite().then_some(v));
-        }
-    }
+    let planar = analysis_fields::Planar::new(f, field);
+    let values = planar.values;
     let mut map = FieldMap {
+        vector_mesh: None,
         flow_display: None,
         boundary: None,
         coverage: None,
@@ -270,16 +214,11 @@ fn flow_map(f: &crate::cfd::Solution, field: FlowField) -> FieldMap {
         y: [p.y0, p.y0 + p.ny as f64 * p.dy],
         aspect: (p.nx as f64 * p.dx / (p.ny as f64 * p.dy)) as f32,
         title: field.label().into(),
-        unit: match field {
-            FlowField::Cp => "Cp",
-            FlowField::Pressure => "kPa",
-            FlowField::Speed => "m/s",
-            FlowField::Mach => "Mach",
-        },
+        unit: field.unit(),
         x_label: "Axial station / m".into(),
         y_label: "Crossflow position / m".into(),
-        range: [-0.3, 1.5],
-        note: "Computed planar solver field. Gray = solid vehicle. The 3D incidence map is a separate estimate.",
+        range: planar.range,
+        note: "Computed planar field. 3D projects this same field onto the mesh; it does not add circumferential flow data.",
     };
     if field != FlowField::Cp {
         map.automatic_range(false);
@@ -342,6 +281,7 @@ fn thermal_map(
         }
     }
     let mut map = FieldMap {
+        vector_mesh: None,
         flow_display: None,
         boundary: None,
         coverage: None,
@@ -410,6 +350,7 @@ fn stress_map(
         }
     }
     let mut map = FieldMap {
+        vector_mesh: None,
         flow_display: None,
         boundary: None,
         coverage: None,
@@ -437,13 +378,19 @@ fn vehicle_map(
     inner: bool,
 ) -> FieldMap {
     let mut map = FieldMap {
+        vector_mesh: None,
         width: raster.width,
         height: raster.height,
-        values: raster
-            .columns
-            .iter()
-            .map(|i| i.map(|i| thermal_surface::temperature(h, i, time, inner) - 273.15))
-            .collect(),
+        values: {
+            let values: Vec<_> = (0..h.columns.len())
+                .map(|i| Some(thermal_surface::temperature(h, i, time, inner) - 273.15))
+                .collect();
+            raster
+                .blends
+                .iter()
+                .map(|b| b.and_then(|b| b.value(&values)))
+                .collect()
+        },
         flow_display: None,
         boundary: None,
         coverage: Some(raster.covered.clone()),
@@ -461,7 +408,12 @@ fn vehicle_map(
         range: [0., 1.],
         note: "Exported mesh shape colored by computed material regions. Gray = uncomputed parts. Circumferential temperature is uniform within each region.",
     };
-    map.automatic_range(false);
+    map.range = thermal_surface::scoped_range(h, time, inner, raster.first_stage, raster.only)
+        .map(|t| t - 273.15);
+    let values = (0..h.columns.len())
+        .map(|i| Some(thermal_surface::temperature(h, i, time, inner) - 273.15))
+        .collect::<Vec<_>>();
+    map.vector_mesh = Some(vehicle_vectors(raster, &values, map.range));
     map
 }
 fn save(map: &FieldMap, key: Key, stage: usize, viewed_time: f64) -> Result<String, String> {
@@ -506,13 +458,17 @@ fn vehicle_stress_map(
     field: &crate::vehicle_stress::Field,
 ) -> FieldMap {
     let mut map = FieldMap {
+        vector_mesh: None,
         width: raster.width,
         height: raster.height,
-        values: raster
-            .columns
-            .iter()
-            .map(|i| i.and_then(|i| field.at_column(i).map(|p| p.stress_pa / 1e6)))
-            .collect(),
+        values: {
+            let values = stress_values(raster, field);
+            raster
+                .blends
+                .iter()
+                .map(|b| b.and_then(|b| b.value(&values)))
+                .collect()
+        },
         flow_display: None,
         boundary: None,
         coverage: Some(raster.covered.clone()),
@@ -527,15 +483,67 @@ fn vehicle_stress_map(
         range: [0., 1.],
         note: "Peak section stress on the exported shape. Gray = unresolved mounts or hardware. CPU beam/shell screening, or CalculiX bonded S8 shell and separate primary fin solids. Circumferential peaks are shown uniformly; contact, buckling, laminate failure and flutter are unresolved.",
     };
-    map.automatic_range(true);
+    map.range = [0., (field.peak() / 1e6).max(1e-9)];
+    map.vector_mesh = Some(vehicle_vectors(
+        raster,
+        &stress_values(raster, field),
+        map.range,
+    ));
     map
+}
+fn stress_values(
+    raster: &thermal_surface::ShapeRaster,
+    field: &crate::vehicle_stress::Field,
+) -> Vec<Option<f64>> {
+    let count = raster
+        .faces
+        .iter()
+        .flat_map(|(_, bs)| bs.iter().flatten())
+        .map(|b| b.a.max(b.b))
+        .max()
+        .map_or(0, |i| i + 1);
+    (0..count)
+        .map(|i| field.at_column(i).map(|p| p.stress_pa / 1e6))
+        .collect()
+}
+fn vehicle_vectors(
+    raster: &thermal_surface::ShapeRaster,
+    values: &[Option<f64>],
+    range: [f64; 2],
+) -> egui::Mesh {
+    let mut mesh = egui::Mesh::default();
+    for (vertices, blends) in &raster.faces {
+        for (v, b) in vertices.iter().zip(blends) {
+            let color =
+                b.and_then(|b| b.value(values))
+                    .map_or(egui::Color32::from_gray(80), |value| {
+                        let c =
+                            surface::palette(((value - range[0]) / (range[1] - range[0])) as f32);
+                        egui::Color32::from_rgb(
+                            (c[0] * 255.) as u8,
+                            (c[1] * 255.) as u8,
+                            (c[2] * 255.) as u8,
+                        )
+                    });
+            mesh.indices.push(mesh.vertices.len() as u32);
+            mesh.vertices.push(egui::epaint::Vertex {
+                pos: egui::pos2(
+                    ((-v[1] - raster.x[0]) / (raster.x[1] - raster.x[0])) as f32,
+                    ((raster.y[1] - v[0]) / (raster.y[1] - raster.y[0])) as f32,
+                ),
+                uv: egui::epaint::WHITE_UV,
+                color,
+            });
+        }
+    }
+    mesh
 }
 pub(super) fn show(
     ui: &mut egui::Ui,
     state: &mut Images,
     w: &Snapshots,
     lab: &Lab,
-    thermal_view: &thermal_view::ThermalView,
+    thermal_view: &mut thermal_view::ThermalView,
 ) {
     ui.horizontal(|ui| {
         ui.heading("2D analysis");
@@ -605,7 +613,7 @@ pub(super) fn show(
                     "Heating history",
                 );
                 if state.thermal_mode != ThermalImage::Wall {
-                    ui.checkbox(&mut state.inner, "Inner wall");
+                    ui.checkbox(&mut thermal_view.inner, "Inner wall");
                 }
             }
             if (key.mode == Mode::Thermal && state.thermal_mode == ThermalImage::Vehicle)
@@ -666,7 +674,7 @@ pub(super) fn show(
         state.stage,
         state.thermal_mode,
         state.shape_stage,
-        state.inner,
+        thermal_view.inner,
         if key.mode == Mode::Thermal {
             viewed_time.to_bits()
         } else {
@@ -681,7 +689,7 @@ pub(super) fn show(
                 let mut map = flow_map(f,state.field);
                 map.boundary = Some(flow_geometry::Boundary::new(&lab.flight.mission,state.stage,&f.problem));
                 map.flow_display = Some(reconstruct_wall_display(&map));
-                map.note = "Computed planar solver field with continuous rocket silhouette. The solver wall remains Cartesian. Display-only near-wall values sample neighboring fluid cells; hover and raw CSV retain the solved-cell mask. The 3D incidence map is separate.";
+                map.note = "Computed planar solver field with continuous rocket silhouette. The solver wall remains Cartesian. Display-only near-wall values sample neighboring fluid cells; hover and raw CSV retain the solved-cell mask. 3D projects this same planar field onto the mesh; fin and circumferential flow remain unresolved.";
                 map
             }),
             Mode::Thermal => thermal_view
@@ -708,7 +716,7 @@ pub(super) fn show(
                                 .map(|r| (scope, r));
                         }
                         return state.shape_cache.as_ref().map(|(_, r)| {
-                            let mut map = vehicle_map(r, h, viewed_time, state.inner);
+                            let mut map = vehicle_map(r, h, viewed_time, thermal_view.inner);
                             map.title.push_str(
                                 &state.shape_stage.map_or(" · retained vehicle".into(), |i| {
                                     format!(" · stage {}", i + 1)
@@ -723,7 +731,7 @@ pub(super) fn show(
                         lab.flight.mission.stages[state.stage].length_m,
                         viewed_time,
                         state.thermal_mode == ThermalImage::History,
-                        state.inner,
+                        thermal_view.inner,
                     )
                 }),
             Mode::Stress => {
@@ -768,15 +776,17 @@ pub(super) fn show(
             map.display_units(units::system(ui));
             let tex = ui.ctx().load_texture(
                 "analysis_2d",
-                egui::ColorImage::new(
-                    [map.width, map.height],
-                    map.display_pixels(key.mode != Mode::Flow),
-                ),
-                if key.mode == Mode::Flow {
-                    egui::TextureOptions::LINEAR
+                if map.vector_mesh.is_some() {
+                    // Vehicle geometry is painted as triangles. Keep a tiny
+                    // unused texture handle; PNG exports retain the 4K raster.
+                    egui::ColorImage::new([1, 1], vec![egui::Color32::WHITE])
                 } else {
-                    egui::TextureOptions::NEAREST
+                    egui::ColorImage::new(
+                        [map.width, map.height],
+                        map.display_pixels(key.mode != Mode::Flow),
+                    )
                 },
+                egui::TextureOptions::LINEAR,
             );
             state.cache = Some((signature, map, tex));
             state.zoom = 1.0;
@@ -843,12 +853,20 @@ pub(super) fn show(
     let r = egui::Rect::from_center_size(plot.center() + state.pan, fit * state.zoom);
     let painter = ui.painter().with_clip_rect(plot);
     painter.rect_filled(plot, 0.0, colors.surface);
-    painter.image(
-        tex.id(),
-        r,
-        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
-        egui::Color32::WHITE,
-    );
+    if let Some(vector_mesh) = &map.vector_mesh {
+        let mut mesh = vector_mesh.clone();
+        for v in &mut mesh.vertices {
+            v.pos = r.min + v.pos.to_vec2() * r.size();
+        }
+        painter.add(egui::Shape::mesh(mesh));
+    } else {
+        painter.image(
+            tex.id(),
+            r,
+            egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+    }
     if key.mode == Mode::Flow
         && !state.motion_paused
         && let Some(flow) = &w.flow
@@ -1114,6 +1132,60 @@ mod tests {
         assert_eq!(reconstruct_wall_display(&map)[3], Some(400.));
         assert_eq!(map.values[3], None);
         assert!(map.value_at(1.0, 0.0).is_none());
+        for field in [
+            FlowField::Cp,
+            FlowField::Pressure,
+            FlowField::Speed,
+            FlowField::Mach,
+        ] {
+            let mut imperial_map = flow_map(&f, field);
+            imperial_map.display_units(units::System::Imperial);
+            assert_eq!(
+                imperial_map.title,
+                units::System::Imperial.label(field.label())
+            );
+            let map = flow_map(&f, field);
+            let planar = analysis_fields::Planar::new(&f, field);
+            assert_eq!(map.range, planar.range);
+            assert_eq!(planar.range, analysis_fields::ranges(&f)[field.index()]);
+            let reconstructed = reconstruct_wall_display(&map);
+            for row in 0..2 {
+                for col in 0..2 {
+                    let vertex = [
+                        map.y[1] - (row as f64 + 0.5),
+                        -(map.x[0] + (col as f64 + 0.5) * 2.),
+                        0.,
+                    ];
+                    assert_eq!(planar.at(vertex), reconstructed[row * 2 + col]);
+                    assert_eq!(planar.at([vertex[0], vertex[1], 9.]), planar.at(vertex));
+                }
+            }
+        }
+    }
+    #[test]
+    fn spatial_sampling_interpolates_inside_material_and_keeps_interfaces() {
+        let mut h = history();
+        let mission = Mission::demo(false);
+        h.columns[0].axial_bounds_m = Some([0., 0.5]);
+        h.columns[1].axial_bounds_m = Some([0.5, 1.]);
+        let sample = |h: &thermal::History, x: f64| {
+            thermal_surface::Mapping::new(h, &mission, 0, "body", None)
+                .at([0., -x, 0.])
+                .unwrap()
+                .value(&[Some(300.), Some(500.)])
+                .unwrap()
+        };
+        assert_eq!(sample(&h, 0.5), 400.);
+        assert_eq!(sample(&h, 0.4), 360.);
+        // Different properties with the same label still define a material interface.
+        h.columns[1].material.thermal.conductivity_w_m_k *= 2.;
+        assert_eq!(sample(&h, 0.49), 300.);
+        assert_eq!(sample(&h, 0.51), 500.);
+        assert!(
+            thermal_surface::Mapping::new(&h, &mission, 0, "unsupported", None)
+                .at([0., -0.5, 0.])
+                .is_none()
+        );
     }
     fn history() -> thermal::History {
         let material = crate::assembly::Material::presets().remove(0);
@@ -1241,9 +1313,19 @@ mod tests {
             ..Default::default()
         };
         let mut stress = vehicle_stress_map(&raster, &structural);
-        for (i, column) in raster.columns.iter().enumerate() {
-            assert_eq!(stress.values[i], column.map(|c| (c + 1) as f64));
+        let stress_samples: Vec<_> = (0..h.columns.len()).map(|i| Some((i + 1) as f64)).collect();
+        for (i, blend) in raster.blends.iter().enumerate() {
+            assert_eq!(
+                stress.values[i],
+                blend.and_then(|b| b.value(&stress_samples))
+            );
         }
+        assert!(map.vector_mesh.as_ref().unwrap().vertices.len() > 1000);
+        assert!(map.values.iter().flatten().any(|v| *v > 65. && *v < 75.));
+        assert_eq!(
+            map.range,
+            thermal_surface::range(&h, 5., false, 0).map(|t| t - 273.15)
+        );
         assert_eq!(stress.range, [0., 4.]);
         stress.display_units(units::System::Imperial);
         assert_eq!(stress.unit, "ksi");
@@ -1252,11 +1334,16 @@ mod tests {
         assert!((stress.range[1] - 4e3 / 6894.757293168).abs() < 1e-9);
         for (i, column) in raster.columns.iter().enumerate() {
             if let Some(column) = column {
-                let expected =
-                    (h.temperatures[0][*column][0] + h.temperatures[1][*column][0]) * 0.5 - 273.15;
+                let _ = column;
+                let samples: Vec<_> = (0..h.columns.len())
+                    .map(|i| Some(thermal_surface::temperature(&h, i, 5., false) - 273.15))
+                    .collect();
+                let expected = raster.blends[i].unwrap().value(&samples).unwrap();
                 assert!((map.values[i].unwrap() - expected).abs() < 1e-10);
-                let expected_inner =
-                    (h.temperatures[0][*column][1] + h.temperatures[1][*column][1]) * 0.5 - 273.15;
+                let samples: Vec<_> = (0..h.columns.len())
+                    .map(|i| Some(thermal_surface::temperature(&h, i, 5., true) - 273.15))
+                    .collect();
+                let expected_inner = raster.blends[i].unwrap().value(&samples).unwrap();
                 assert!((inner.values[i].unwrap() - expected_inner).abs() < 1e-10);
             } else if raster.covered[i] {
                 assert_eq!(pixels[i], egui::Color32::from_gray(80));

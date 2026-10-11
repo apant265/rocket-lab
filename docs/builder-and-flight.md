@@ -64,3 +64,5 @@ This reproduces the core component catalogue and adds this application's motor/p
 ## Exported model flight
 
 **Export 3D model** saves Blender and GLB files plus evaluated mesh data. **Launch simulation** uses mesh-derived dry mass, centroid, full inertia and projected crossflow shape. See [model flight](model-flight.md) for the calculation modes, saved outputs and aerodynamic limits.
+
+Front transitions replace the leading cylinder section in the builder, Blender export, fallback flight mesh and CFD body profile. The default Kate and Anvil example now includes editable 6 in and 2.5 in interstage tapers, using lengths from the supplied OpenRocket design with fore diameters reconciled to the current adjacent stages. G10 wall properties remain editable assumptions. Nominal taper mass and CG are allocated from the existing assembled dry measurements. Thermal axial cells resolve these tapered walls and their section materials; the CFD numerical wall remains Cartesian.

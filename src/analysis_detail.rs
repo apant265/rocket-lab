@@ -26,9 +26,9 @@ impl Detail {
     pub fn thermal(self) -> crate::thermal::Resolution {
         let (axial_cells, fin_cells, max_step_s) = match self {
             Self::Preview => (8, 2, 0.05),
-            Self::Standard => (32, 8, 0.0125),
-            Self::Fine => (64, 16, 0.00625),
-            Self::Ultra => (128, 32, 0.0015625),
+            Self::Standard => (64, 16, 0.00625),
+            Self::Fine => (128, 32, 0.003125),
+            Self::Ultra => (256, 64, 0.001),
         };
         crate::thermal::Resolution {
             axial_cells,
@@ -47,9 +47,9 @@ impl Detail {
     pub fn stress(self) -> usize {
         match self {
             Self::Preview => 32,
-            Self::Standard => 128,
-            Self::Fine => 256,
-            Self::Ultra => 512,
+            Self::Standard => 256,
+            Self::Fine => 512,
+            Self::Ultra => 1024,
         }
     }
     pub fn wall_layers(self) -> usize {

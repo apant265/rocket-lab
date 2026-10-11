@@ -1,0 +1,12 @@
+{
+  "blender": "5.2.0 LTS",
+  "parts": 30,
+  "vertices": 66912,
+  "triangles": 108704,
+  "mission": "\\\\?\\C:\\Users\\apant\\workspace\\Rocket Project\\output\\transition-model\\mission.json",
+  "outputs": [
+    "rocket.blend",
+    "rocket.glb",
+    "rocket.mesh.json"
+  ]
+}

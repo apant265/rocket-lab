@@ -505,6 +505,8 @@ pub(super) fn start_model(lab: &mut Lab, job: &mut BuildJob) {
             .args([
                 "--background",
                 "--factory-startup",
+                "--python-exit-code",
+                "1",
                 "--python",
                 "scripts/build_model.py",
                 "--",

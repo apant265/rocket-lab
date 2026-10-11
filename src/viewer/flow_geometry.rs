@@ -115,6 +115,38 @@ impl Boundary {
 mod tests {
     use super::*;
     #[test]
+    fn default_transition_outline_is_tapered_at_every_zoom() {
+        let mut mission = crate::config::Mission::load("examples/kate-anvil-desert.json").unwrap();
+        crate::design::initialize_geometry(&mut mission);
+        let p = crate::cfd::prepare(
+            &mission,
+            crate::cfd::Request {
+                stage: 0,
+                altitude_m: 0.,
+                mach: 1.,
+                alpha_deg: 0.,
+                grid: [96, 64],
+                steps: 1,
+            },
+        )
+        .unwrap();
+        let boundary = Boundary::new(&mission, 0, &p);
+        for index in 0..2 {
+            let taper = &mission.stages[index].components[0];
+            let offset: f64 = mission.stages[index + 1..].iter().map(|s| s.length_m).sum();
+            for fraction in [0.1, 0.25, 0.5, 0.75, 0.9] {
+                let x = offset + taper.length_m * fraction;
+                let u = (x - p.x0) / (p.nx as f64 * p.dx);
+                let radius = boundary.radius(u) * (p.ny as f64 * p.dy);
+                let expected = (taper.fore_diameter_m
+                    + (taper.diameter_m - taper.fore_diameter_m) * fraction)
+                    * 0.5;
+                assert!((radius - expected).abs() < 1e-9);
+                assert!(radius < taper.diameter_m * 0.5);
+            }
+        }
+    }
+    #[test]
     fn smooth_boundary_and_partial_pixel_coverage_do_not_depend_on_grid_stairs() {
         let mission = crate::config::Mission::demo(false);
         let p = crate::cfd::prepare(

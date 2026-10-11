@@ -79,7 +79,7 @@ pub(super) struct Snapshots {
     task: Option<std::thread::JoinHandle<Result<ResultData, String>>>,
     completed: Option<Key>,
     flow: Option<crate::cfd::Solution>,
-    texture: Option<egui::TextureHandle>,
+    flow_ranges: [[f64; 2]; 4],
     pub image_view: bool,
     images: images::Images,
     pub stress: Vec<analysis::StressPoint>,
@@ -101,7 +101,7 @@ impl Default for Snapshots {
             task: None,
             completed: None,
             flow: None,
-            texture: None,
+            flow_ranges: [[0., 1.]; 4],
             image_view: true,
             images: images::Images::default(),
             stress: Vec::new(),
@@ -140,11 +140,46 @@ impl Snapshots {
         ));
         self.completed = None;
         self.flow = None;
-        self.texture = None;
+        self.flow_ranges = [[0., 1.]; 4];
         self.images.invalidate();
         self.stress.clear();
         self.vehicle_stress = None;
         self.report = format!("Computing {} at T+ {:.3} s…", self.mode.label(), lab.time);
+    }
+    pub fn captured(&self, lab: &Lab, mode: Mode) -> Option<f64> {
+        self.completed
+            .filter(|k| k.revision == lab.model_revision && k.mode == mode)
+            .map(|k| k.time)
+    }
+    pub fn view_time(&self, lab: &Lab) -> Option<f64> {
+        if lab.workspace != 1 || lab.tab != 6 || self.image_view {
+            return None;
+        }
+        let mode = match lab.surface_mode {
+            1 | 2 => Mode::Flow,
+            3 => Mode::Thermal,
+            4 => Mode::Stress,
+            _ => return None,
+        };
+        self.captured(lab, mode).map(|t| {
+            if mode == Mode::Thermal {
+                lab.time.min(t)
+            } else {
+                t
+            }
+        })
+    }
+    pub fn flow_solution(&self) -> Option<&crate::cfd::Solution> {
+        self.flow.as_ref()
+    }
+    pub fn field(&self) -> analysis_fields::FlowField {
+        self.images.field()
+    }
+    pub fn scope(&self) -> Option<usize> {
+        self.images.scope()
+    }
+    pub fn field_signature(&self) -> String {
+        format!("{:?}-{:?}", self.completed, self.images.field())
     }
     pub fn stress_matches(&self, lab: &Lab) -> bool {
         self.completed.is_some_and(|k| {
@@ -186,7 +221,11 @@ pub(super) fn poll(
                 }
                 w.completed = Some(r.key);
                 w.flow = r.flow;
-                w.texture = None;
+                w.flow_ranges = w
+                    .flow
+                    .as_ref()
+                    .map(analysis_fields::ranges)
+                    .unwrap_or([[0., 1.]; 4]);
                 w.images.invalidate();
                 w.stress = r.stress;
                 w.vehicle_stress = r.vehicle_stress;
@@ -584,6 +623,78 @@ pub(super) fn controls(ui: &mut egui::Ui, w: &mut Snapshots, lab: &mut Lab) {
     }
     ui.separator();
 }
+pub(super) fn field_legend(ui: &mut egui::Ui, w: &Snapshots, lab: &Lab) -> bool {
+    let mode = match lab.surface_mode {
+        1 | 2 => Mode::Flow,
+        3 => Mode::Thermal,
+        4 => Mode::Stress,
+        _ => return false,
+    };
+    let Some(time) = w.captured(lab, mode) else {
+        return false;
+    };
+    ui.strong("COMPUTED FIELD");
+    ui.small(format!("Captured T+ {time:.3} s"));
+    if mode == Mode::Flow {
+        ui.label(units::system(ui).label(w.field().label()));
+        let range = w.flow_ranges[w.field().index()];
+        ui.small(format!(
+            "{} – {}",
+            units::value(ui, w.field().label(), range[0], w.field().unit(), 3),
+            units::value(ui, w.field().label(), range[1], w.field().unit(), 3)
+        ));
+        help::hint(
+            ui,
+            "Same planar solution and color scale as 2D. Projected through z; fin flow and circumferential variations are unresolved.",
+        );
+    } else if mode == Mode::Stress {
+        if let Some(f) = &w.vehicle_stress {
+            metric(
+                ui,
+                "Peak stress",
+                units::value(ui, "Stress", f.peak() / 1e6, "MPa", 3),
+            );
+        }
+        help::hint(
+            ui,
+            "Same section stress envelope and material-aware interpolation as 2D. Gray marks unresolved hardware.",
+        );
+    }
+    true
+}
+pub(super) fn view_controls(ui: &mut egui::Ui, w: &mut Snapshots, lab: &Lab) {
+    if w.mode == Mode::Flow {
+        for field in [
+            analysis_fields::FlowField::Cp,
+            analysis_fields::FlowField::Pressure,
+            analysis_fields::FlowField::Speed,
+            analysis_fields::FlowField::Mach,
+        ] {
+            ui.selectable_value(
+                &mut w.images.field,
+                field,
+                units::system(ui).label(field.label()),
+            );
+        }
+    } else {
+        egui::ComboBox::from_id_salt("shared_3d_scope")
+            .selected_text(
+                w.images
+                    .shape_stage
+                    .map_or("Retained vehicle".into(), |i| format!("Stage {}", i + 1)),
+            )
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut w.images.shape_stage, None, "Retained vehicle");
+                for (i, s) in lab.flight.mission.stages.iter().enumerate() {
+                    ui.selectable_value(
+                        &mut w.images.shape_stage,
+                        Some(i),
+                        format!("S{} · {}", i + 1, s.name),
+                    );
+                }
+            });
+    }
+}
 pub(super) fn show(
     ui: &mut egui::Ui,
     w: &mut Snapshots,
@@ -608,72 +719,25 @@ pub(super) fn show(
             let Some(f) = &w.flow else {
                 return;
             };
-            let p = &f.problem;
-            if w.texture.is_none() {
-                let q = 0.5
-                    * p.far[0]
-                    * ((p.far[1] / p.far[0]).powi(2) + (p.far[2] / p.far[0]).powi(2));
-                let far = crate::cfd::pressure(p.far);
-                let colors = (0..p.ny)
-                    .rev()
-                    .flat_map(|j| (0..p.nx).map(move |i| j * p.nx + i))
-                    .map(|i| {
-                        if p.solid[i] {
-                            egui::Color32::from_gray(190)
-                        } else {
-                            let t = (((crate::cfd::pressure(f.cells[i]) - far) / q + 0.3) / 1.8)
-                                .clamp(0.0, 1.0);
-                            egui::Color32::from_rgb(
-                                (255.0 * t) as u8,
-                                (170.0 * (1.0 - (2.0 * t - 1.0).abs())) as u8,
-                                (255.0 * (1.0 - t)) as u8,
-                            )
-                        }
-                    })
-                    .collect();
-                w.texture = Some(ui.ctx().load_texture(
-                    "snapshot_flow",
-                    egui::ColorImage::new([p.nx, p.ny], colors),
-                    egui::TextureOptions::LINEAR,
-                ));
-            }
-            let r = ui
-                .add(
-                    egui::Image::new(w.texture.as_ref().unwrap())
-                        .maintain_aspect_ratio(false)
-                        .fit_to_exact_size(egui::vec2(
-                            ui.available_width(),
-                            (ui.available_width() as f64 * p.ny as f64 * p.dy
-                                / (p.nx as f64 * p.dx))
-                                .min(135.0) as f32,
-                        )),
-                )
-                .rect;
-            let stride = (p.nx / 40).max(4);
-            for j in (0..p.ny).step_by(stride) {
-                for i in (0..p.nx).step_by(stride) {
-                    let n = j * p.nx + i;
-                    if p.solid[n] {
-                        continue;
-                    }
-                    let c = f.cells[n];
-                    let l = c[1].hypot(c[2]).max(1e-12);
-                    ui.painter().arrow(
-                        egui::pos2(
-                            r.left() + (i as f32 + 0.5) / p.nx as f32 * r.width(),
-                            r.bottom() - (j as f32 + 0.5) / p.ny as f32 * r.height(),
-                        ),
-                        egui::vec2((c[1] / l) as f32 * 5.0, -(c[2] / l) as f32 * 5.0),
-                        egui::Stroke::new(0.5, egui::Color32::WHITE),
-                    );
-                }
-            }
+            ui.strong(units::system(ui).label(w.field().label()));
+            let range = w.flow_ranges[w.field().index()];
+            metric(
+                ui,
+                "Range",
+                format!(
+                    "{} – {}",
+                    units::value(ui, w.field().label(), range[0], w.field().unit(), 3),
+                    units::value(ui, w.field().label(), range[1], w.field().unit(), 3)
+                ),
+            );
+            metric(ui, "Grid", format!("{} × {}", f.problem.nx, f.problem.ny));
+            metric(ui, "Iterations", f.problem.steps.to_string());
             help::hint(
                 ui,
-                "Computed planar Cp / velocity · blue −0.3 to red 1.5. The 3D pressure view uses a separate incidence estimate. Inspect saved solver logs and refinement before interpreting results.",
+                "2D and 3D use this same captured planar solution and color scale. The 3D plane is a slice; its projection onto the vehicle does not resolve circumferential flow or fin aerodynamics.",
             );
         }
-        Mode::Thermal => thermal_view::show(ui, thermal, lab),
+        Mode::Thermal => thermal_view::show(ui, thermal, lab, w),
         Mode::Stress => {
             if !w.stress_matches(lab) {
                 help::hint(
@@ -735,7 +799,7 @@ pub(super) fn image_panel(
     ui: &mut egui::Ui,
     w: &mut Snapshots,
     lab: &Lab,
-    thermal: &thermal_view::ThermalView,
+    thermal: &mut thermal_view::ThermalView,
 ) {
     let mut state = std::mem::take(&mut w.images);
     images::show(ui, &mut state, w, lab, thermal);

@@ -297,7 +297,7 @@ for obj in objects:
 (out/'rocket.mesh.json').write_text(json.dumps(document,separators=(',',':')),encoding='utf-8')
 bpy.ops.wm.save_as_mainfile(filepath=str(out/'rocket.blend'))
 # Export the same Blender scene for reuse in tools that accept native glTF.
-bpy.ops.export_scene.gltf(filepath=str(out/'rocket.glb'),export_format='GLB',export_animations=False,
+bpy.ops.export_scene.gltf(filepath=(out/'rocket.glb').as_posix().removeprefix('//?/'),export_format='GLB',export_animations=False,
                           export_cameras=False,export_lights=False,export_extras=True)
 receipt = {'blender':bpy.app.version_string,'parts':len(document['parts']),
            'vertices':sum(len(p['positions']) for p in document['parts']),

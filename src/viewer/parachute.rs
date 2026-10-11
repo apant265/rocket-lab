@@ -171,6 +171,7 @@ pub(super) fn scene(
     attitude: Quat,
     sample: &Telemetry,
 ) {
+    let origins = staging::origin_offsets(&lab.flight, sample.stage);
     for (canopy, mut transform, mut visibility) in query.iter_mut() {
         let mission = if lab.workspace == 0 {
             &lab.draft
@@ -179,7 +180,15 @@ pub(super) fn scene(
         };
         let retained = canopy.stage == mission.stages.len() - 1;
         let stage = &mission.stages[canopy.stage];
-        let mut attachment = position + attitude * Vec3::Y * sample.cg_m as f32 * scale;
+        let mut attachment = position
+            + attitude
+                * staging::center_shift(
+                    mission,
+                    sample.stage..mission.stages.len(),
+                    sample.cg_m,
+                    sample.mass_kg,
+                )
+                * scale;
         let mut fractions = (sample.drogue_fraction, sample.main_fraction);
         let recovery = if retained {
             Some(&mission.recovery)
@@ -195,13 +204,21 @@ pub(super) fn scene(
                 .rev()
                 .find(|s| s.stage == canopy.stage && s.time_s <= lab.time)
             {
-                let p =
-                    Vec3::new(d.east_m as f32, d.altitude_agl_m as f32, -d.north_m as f32) * 0.001;
+                let p = Vec3::new(d.east_m as f32, d.altitude_agl_m as f32, -d.north_m as f32)
+                    * staging::WORLD_SCALE
+                    + origins[canopy.stage] * (scale - staging::WORLD_SCALE);
                 let mapping = Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2);
                 let q = mapping
                     * Quat::from_xyzw(d.qx as f32, d.qy as f32, d.qz as f32, d.qw as f32)
                     * Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
-                attachment = p + q * Vec3::Y * d.cg_m as f32 * scale;
+                attachment = p + q
+                    * staging::center_shift(
+                        mission,
+                        canopy.stage..canopy.stage + 1,
+                        d.cg_m,
+                        d.mass_kg,
+                    )
+                    * scale;
                 fractions = (d.drogue_fraction, d.main_fraction);
                 velocity = Vec3::new(d.vx as f32, d.vz as f32, -d.vy as f32);
                 if d.landed {
@@ -306,7 +323,9 @@ pub(super) fn scene(
                     })
             };
             let point = Vec3::new(p.east_m as f32, p.altitude_agl_m as f32, -p.north_m as f32);
-            transform.translation = body * 0.001 + (point - body) * scale;
+            transform.translation = body * staging::WORLD_SCALE
+                + origins[canopy.stage] * (scale - staging::WORLD_SCALE)
+                + (point - body) * scale;
             rotation = Quat::from_rotation_arc(
                 Vec3::Y,
                 (transform.translation - attachment).normalize_or(up),
