@@ -8,7 +8,7 @@ Use the timestamp analysis controls in **Simulate** for computed flow, thermal d
 
 | Feature | Current behavior |
 |---|---|
-| Builder | Blender-rendered model cards, Parts cards with held drag/drop onto the stage axis, triangle-based selection in 3D, transition-created boosters, immediate geometry, editable dimensions/density/mass/CG, independent tube/nose/transition/fin components, undo/redo, save/load and headless Blender rebuild |
+| Builder | Blender-rendered model cards, Parts cards with held drag/drop onto the stage axis, triangle-based selection in 3D, tapered transitions within stages, parented inner tubes and centering rings, immediate geometry, editable dimensions/density/mass/CG, independent tube/nose/transition/fin components, undo/redo, File New/Open/Save/Save as and headless Blender rebuild |
 | Camera and flight | Held left/right drag translates the camera; Shift-right drag looks around; zoom and Fit flight show flown and future arcs; rotation follows integrated rigid-body dynamics |
 | Flight physics | f64 RK4 translation/quaternion/Euler rotation, fuel-dependent mass/CG/inertia, four Mach regimes, detached bodies and configurable staging, imported coefficient grids and optional rarefied-flow screening bridge |
 | Recovery | Inflated vented mesh and suspension lines for each stage; reefing, opening factors, deployment interlocks, optional moving canopy mass and unilateral spring/damper tether with rigid-body torque |

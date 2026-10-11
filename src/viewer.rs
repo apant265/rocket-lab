@@ -2,7 +2,9 @@
 //! Bevy uses f32 only for visual placement; rendering never changes the physics.
 mod analysis_fields;
 mod builder;
+mod documents;
 mod editor;
+mod exchange_ui;
 mod field_mesh;
 mod field_plane;
 mod help;
@@ -286,6 +288,8 @@ pub fn launch(
         })
         .init_resource::<ModelRevision>()
         .init_resource::<builder::BuildJob>()
+        .init_resource::<exchange_ui::Exchange>()
+        .init_resource::<documents::Documents>()
         .init_resource::<map::MapState>()
         .init_resource::<editor::Editor>()
         .init_gizmo_group::<editor::SelectionBox>()
@@ -458,7 +462,7 @@ fn spawn_vehicle(
     let mut offset = 0.0;
     for i in (0..lab.draft.stages.len()).rev() {
         let s = &lab.draft.stages[i];
-        for c in &s.components {
+        for c in s.components.iter().filter(|c| !c.external()) {
             commands.spawn((
                 Name::new(c.name.clone()),
                 Mesh3d(meshes.add(Cylinder::new(c.diameter_m as f32 * 0.5, c.length_m as f32))),
@@ -492,7 +496,7 @@ fn spawn_vehicle(
                 vec![[1.0_f32; 4]; part.positions.len()],
             );
             mesh.insert_indices(Indices::U32(part.indices.clone()));
-            commands.spawn((
+            let mut entity = commands.spawn((
                 Name::new(part.name.clone()),
                 Mesh3d(meshes.add(mesh)),
                 MeshMaterial3d(materials.add(StandardMaterial {
@@ -514,6 +518,9 @@ fn spawn_vehicle(
                     component_index: part.component_index,
                 },
             ));
+            if part.kind == "internal" {
+                entity.insert(InternalPart);
+            }
         }
         return;
     }
@@ -1223,8 +1230,11 @@ fn playback(
                 0,
                 None,
             );
-            assert_eq!(lab.draft.stages.len(), lab.reset_mission.stages.len() + 1);
-            assert_eq!(lab.selected_component, Some(0));
+            assert_eq!(lab.draft.stages.len(), lab.reset_mission.stages.len());
+            assert_eq!(
+                lab.draft.stages[0].components[lab.selected_component.unwrap()].kind,
+                crate::assembly::PartKind::Transition
+            );
             lab.draft
                 .save("output/transition-editor-mission.json")
                 .unwrap();
@@ -1235,9 +1245,12 @@ fn playback(
                 .iter()
                 .map(|s| s.length_m as f32)
                 .sum::<f32>();
-            let y =
-                (length * 0.5 - offset - lab.draft.stages[0].components[0].length_m as f32 * 0.5)
-                    * scale;
+            let y = (length * 0.5
+                - offset
+                - (lab.draft.stages[0].components[lab.selected_component.unwrap()].position_m
+                    + lab.draft.stages[0].components[lab.selected_component.unwrap()].length_m
+                        * 0.5) as f32)
+                * scale;
             let hit = catalogue
                 .pick(Vec3::new(0.0, y, 5.0), -Vec3::Z, false)
                 .expect("transition surface must be selectable");
@@ -1246,7 +1259,7 @@ fn playback(
                 editor::Selection {
                     stage: 0,
                     builtin: 0,
-                    component: Some(0)
+                    component: lab.selected_component
                 }
             );
             editor::select(&mut lab, hit);
@@ -1254,7 +1267,7 @@ fn playback(
                 .selection_bounds(hit, false)
                 .expect("selection box bounds must exist");
             assert!(min.y < y && max.y > y && max.x > min.x);
-            let report = serde_json::json!({"transition_creates_booster":lab.draft.stages.len()==lab.reset_mission.stages.len()+1,"transition_mesh_selected":true,"selection_box_matches_transition":true,"inspector_component":lab.selected_component,"stage":lab.selected_stage,"short_click_keeps_camera":!camera_drag_started(Vec2::ZERO,Vec2::new(3.0,4.0),1.0),"drag_moves_camera":camera_drag_started(Vec2::ZERO,Vec2::new(7.0,0.0),1.0)});
+            let report = serde_json::json!({"transition_preserves_stage_count":lab.draft.stages.len()==lab.reset_mission.stages.len(),"transition_mesh_selected":true,"selection_box_matches_transition":true,"inspector_component":lab.selected_component,"stage":lab.selected_stage,"short_click_keeps_camera":!camera_drag_started(Vec2::ZERO,Vec2::new(3.0,4.0),1.0),"drag_moves_camera":camera_drag_started(Vec2::ZERO,Vec2::new(7.0,0.0),1.0)});
             std::fs::write(
                 "output/editor-check.json",
                 serde_json::to_string_pretty(&report).unwrap(),
@@ -1273,7 +1286,7 @@ fn playback(
                 .iter()
                 .map(|s| s.length_m as f32)
                 .sum::<f32>();
-            let y = (length * 0.5 - offset - lab.draft.stages[0].length_m as f32 * 0.85) * scale;
+            let y = (length * 0.5 - offset - lab.draft.stages[0].motor.cg_m as f32) * scale;
             let hit = catalogue
                 .pick(Vec3::new(5.0, y, 0.0), -Vec3::X, true)
                 .expect("revealed motor must be selectable");

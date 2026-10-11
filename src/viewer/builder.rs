@@ -1,6 +1,6 @@
 use super::*;
 use crate::assembly;
-use crate::config::{Result, StageGeometry};
+use crate::config::Result;
 use std::{
     collections::HashSet,
     fs,
@@ -50,9 +50,15 @@ pub(super) fn prepare(lab: &mut Lab) -> Result<Mission> {
         for part in &mut stage.components {
             part.size_tube_fins(stage.diameter_m);
         }
+        assembly::refit_internals(stage);
     }
     m.validate()?;
-    if lab.geometry_dirty {
+    if lab.geometry_dirty
+        && !m
+            .stages
+            .iter()
+            .any(|s| s.components.iter().any(|p| p.mesh.is_some()))
+    {
         crate::design::estimate_aero(&mut m);
     }
     m.validate()?;
@@ -85,90 +91,6 @@ pub(super) fn launch(lab: &mut Lab, job: &mut BuildJob) {
     } else {
         run(lab, job);
     }
-}
-#[cfg(test)]
-mod stage_tests {
-    use super::*;
-    #[test]
-    fn transition_inserts_a_booster_below_selected_stage_and_remaps_controls() {
-        let mut m = Mission::load("examples/advanced-laboratory.json").unwrap();
-        initialize_geometry(&mut m);
-        let payload = m.stages[0].payload_mass_kg;
-        let diameter = m.stages[0].diameter_m;
-        assert_eq!(transition_booster(&mut m, 0).unwrap(), 0);
-        assert_eq!(m.stages.len(), 2);
-        assert_eq!(m.stages[1].payload_mass_kg, payload);
-        assert_eq!(m.stages[0].payload_mass_kg, 0.0);
-        assert_eq!(m.stages[0].components[0].position_m, 0.0);
-        assert_eq!(m.stages[0].components[0].fore_diameter_m, diameter);
-        assert_eq!(m.stages[0].components[0].diameter_m, m.stages[0].diameter_m);
-        assert!(m.experiments.recovery.iter().all(|r| r.stage == 1));
-        assert!(m.experiments.thermal.iter().all(|r| r.stage == 1));
-        m.validate().unwrap();
-        // Insert between existing stages, preserving the original bottom stage.
-        let bottom = m.stages[0].name.clone();
-        transition_booster(&mut m, 1).unwrap();
-        assert_eq!(m.stages[0].name, bottom);
-        assert_eq!(m.experiments.recovery[0].stage, 2);
-        m.validate().unwrap();
-    }
-}
-/// Insert immediately aft of the chosen stage; mission indexes remain bottom-first.
-fn insert_booster(m: &mut Mission, index: usize) -> Result<usize> {
-    if m.stages.len() >= 12 {
-        return Err("Maximum 12 stages reached".into());
-    }
-    let index = index.min(m.stages.len() - 1);
-    let mut s = m.stages[index].clone();
-    s.name = format!("Booster {}", m.stages.len());
-    s.payload_mass_kg = 0.0;
-    s.payload_name.clear();
-    s.components.clear();
-    s.ignition_delay_s = 0.0;
-    s.separation = crate::config::Trigger::Burnout { delay_s: 0.0 };
-    if s.geometry.is_none() {
-        s.geometry = Some(StageGeometry::generic(&s, false));
-    }
-    s.geometry.as_mut().unwrap().nose_length_m = 0.0;
-    s.recovery = Some(s.recovery.clone().unwrap_or_else(|| m.recovery.clone()));
-    for r in &mut m.experiments.recovery {
-        if r.stage >= index {
-            r.stage += 1;
-        }
-    }
-    for r in &mut m.experiments.aero_grids {
-        if r.stage >= index {
-            r.stage += 1;
-        }
-    }
-    for r in &mut m.experiments.commands {
-        if r.stage >= index {
-            r.stage += 1;
-        }
-    }
-    for r in &mut m.experiments.thermal {
-        if r.stage >= index {
-            r.stage += 1;
-        }
-    }
-    if let Some(material) = s.materials.as_mut() {
-        material.component_shell = false;
-    }
-    m.stages.insert(index, s);
-    Ok(index)
-}
-fn transition_booster(m: &mut Mission, above: usize) -> Result<usize> {
-    let fore_diameter = m.stages[above].diameter_m;
-    let index = insert_booster(m, above)?;
-    let s = &mut m.stages[index];
-    s.diameter_m = fore_diameter * 1.2;
-    let mut transition = crate::assembly::Part::new(crate::assembly::PartKind::Transition, s);
-    transition.name = "Booster transition".into();
-    transition.position_m = 0.0;
-    transition.fore_diameter_m = fore_diameter;
-    transition.diameter_m = s.diameter_m;
-    s.components.push(transition);
-    Ok(index)
 }
 #[derive(Clone, Copy, Debug)]
 pub(super) enum DropPart {
@@ -208,6 +130,40 @@ pub(super) fn drop_part(lab: &mut Lab, payload: DropPart, stage: usize, station:
     match payload {
         DropPart::Builtin(part) => {
             lab.selected_part = part;
+            if part == 3 {
+                let s = &mut lab.draft.stages[i];
+                let target = station.unwrap_or(s.motor.cg_m);
+                if let Some(component) = s
+                    .components
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, p)| p.kind == crate::assembly::PartKind::InnerTube)
+                    .min_by(|(_, a), (_, b)| {
+                        (a.position_m + a.length_m * 0.5 - target)
+                            .abs()
+                            .total_cmp(&(b.position_m + b.length_m * 0.5 - target).abs())
+                    })
+                    .map(|(j, _)| j)
+                {
+                    let length = lab
+                        .motor_library
+                        .iter()
+                        .find(|m| Some(m.name.as_str()) == s.motor.name.split_whitespace().next())
+                        .map_or(s.components[component].length_m * 0.9, |m| m.length_m);
+                    for (j, p) in s.components.iter_mut().enumerate() {
+                        p.motor_mount = j == component;
+                    }
+                    s.components[component].motor_length_m = length;
+                    s.components[component].motor_diameter_m = lab
+                        .motor_library
+                        .iter()
+                        .find(|m| Some(m.name.as_str()) == s.motor.name.split_whitespace().next())
+                        .map_or(0., |m| m.diameter_m);
+                    assembly::sync_motor_mount(s);
+                    lab.selected_component = Some(component);
+                    lab.show_internals = true;
+                }
+            }
             if part == 0 {
                 let s = &mut lab.draft.stages[i];
                 s.length_m += 0.2;
@@ -229,18 +185,25 @@ pub(super) fn drop_part(lab: &mut Lab, payload: DropPart, stage: usize, station:
         }
         DropPart::Extra(kind) => {
             if kind == crate::assembly::PartKind::Transition {
-                match transition_booster(&mut lab.draft, i) {
-                    Ok(index) => {
-                        lab.selected_stage = index;
-                        lab.selected_component = Some(0);
-                    }
-                    Err(e) => {
-                        lab.status = e.to_string();
-                        return;
-                    }
-                }
+                let s = &mut lab.draft.stages[i];
+                let attach = station.unwrap_or(s.length_m);
+                lab.selected_component = Some(assembly::attach_transition(s, attach));
                 lab.geometry_dirty = true;
-                lab.status = "Transition attached; new booster created below the selected stage. Edit its transition, body and motor in 3D.".into();
+                lab.status = "Transition attached".into();
+                return;
+            }
+            if matches!(
+                kind,
+                crate::assembly::PartKind::InnerTube
+                    | crate::assembly::PartKind::CenteringRing
+                    | crate::assembly::PartKind::EngineBlock
+            ) {
+                let s = &mut lab.draft.stages[i];
+                let attach = station.unwrap_or(s.length_m * 0.7);
+                lab.selected_component = Some(assembly::attach_internal(s, kind, attach));
+                lab.show_internals = true;
+                lab.geometry_dirty = true;
+                lab.status = "Internal component attached".into();
                 return;
             }
             let s = &mut lab.draft.stages[i];
@@ -305,10 +268,14 @@ pub(super) fn drop_part(lab: &mut Lab, payload: DropPart, stage: usize, station:
             {
                 return;
             }
-            let mut p = lab.draft.stages[from].components.remove(component);
+            let mut tree = assembly::take_component_tree(&mut lab.draft.stages[from], component);
+            let mut p = tree.remove(0);
+            let old_position = p.position_m;
             let shell = matches!(
                 p.kind,
-                crate::assembly::PartKind::BodyTube | crate::assembly::PartKind::NoseCone
+                crate::assembly::PartKind::BodyTube
+                    | crate::assembly::PartKind::NoseCone
+                    | crate::assembly::PartKind::Transition
             );
             if shell {
                 let old_end = p.position_m + p.length_m;
@@ -327,9 +294,17 @@ pub(super) fn drop_part(lab: &mut Lab, payload: DropPart, stage: usize, station:
                 assembly::shift_aft(s, target, p.length_m, None);
                 p.position_m = target;
                 p.axial_offset_m = 0.0;
+                let root = s.components.len();
+                let delta = p.position_m - old_position;
                 s.components.push(p);
+                for mut child in tree {
+                    child.parent_component = child.parent_component.map(|j| root + j);
+                    child.position_m += delta;
+                    s.components.push(child);
+                }
                 assembly::fit_shell(s);
-                lab.selected_component = Some(s.components.len() - 1);
+                assembly::refit_internals(s);
+                lab.selected_component = Some(root);
                 lab.geometry_dirty = true;
                 lab.status =
                     "Section moved to an attachment boundary. Edit its offset in properties."
@@ -337,18 +312,49 @@ pub(super) fn drop_part(lab: &mut Lab, payload: DropPart, stage: usize, station:
                 return;
             }
             let s = &mut lab.draft.stages[i];
-            p.length_m = p.length_m.min(s.length_m * 0.8);
-            if !p.external() {
-                p.diameter_m = p.diameter_m.min(s.diameter_m);
-            }
-            p.size_tube_fins(s.diameter_m);
-            p.thickness_m = p.thickness_m.min(p.diameter_m * 0.5);
-            p.cg_m = p.cg_m.min(p.length_m);
-            p.position_m = station
-                .unwrap_or(p.position_m)
-                .clamp(0.0, s.length_m - p.length_m);
+            let target = station.unwrap_or(p.position_m);
+            let wanted = if matches!(
+                p.kind,
+                crate::assembly::PartKind::CenteringRing | crate::assembly::PartKind::EngineBlock
+            ) {
+                Some(crate::assembly::PartKind::InnerTube)
+            } else if p.kind == crate::assembly::PartKind::InnerTube {
+                Some(crate::assembly::PartKind::BodyTube)
+            } else {
+                None
+            };
+            p.parent_component = wanted.and_then(|kind| {
+                s.components
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, tube)| tube.kind == kind && tube.length_m >= p.length_m)
+                    .min_by(|(_, a), (_, b)| {
+                        (a.position_m - target)
+                            .abs()
+                            .total_cmp(&(b.position_m - target).abs())
+                    })
+                    .map(|(j, _)| j)
+            });
+            p.position_m = if let Some(parent) = p.parent_component {
+                let tube = &s.components[parent];
+                target.clamp(
+                    tube.position_m,
+                    tube.position_m + tube.length_m - p.length_m,
+                )
+            } else {
+                target.clamp(0., (s.length_m - p.length_m).max(0.))
+            };
+            p.axial_offset_m = 0.;
+            let root = s.components.len();
+            let delta = p.position_m - old_position;
             s.components.push(p);
-            lab.selected_component = Some(s.components.len() - 1);
+            for mut child in tree {
+                child.parent_component = child.parent_component.map(|j| root + j);
+                child.position_m += delta;
+                s.components.push(child);
+            }
+            assembly::refit_internals(s);
+            lab.selected_component = Some(root);
         }
     }
     lab.geometry_dirty = true;
@@ -411,8 +417,22 @@ pub(super) fn select_motor(lab: &mut Lab, entry: &MotorEntry) {
                 .find(|m| Some(m.name.as_str()) == stage.motor.name.split_whitespace().next());
             let old_case = old.map_or(0.0, |m| m.total_mass_kg - m.propellant_mass_kg);
             let new_case = entry.total_mass_kg - entry.propellant_mass_kg;
-            motor.cg_m = stage.length_m - entry.length_m * 0.5;
-            if let Some(material) = stage.materials.as_mut().filter(|m| m.use_material_mass) {
+            motor.cg_m = stage
+                .components
+                .iter()
+                .find(|p| p.motor_mount)
+                .map_or(stage.length_m - entry.length_m * 0.5, |p| {
+                    p.position_m + p.length_m + p.motor_overhang_m - entry.length_m * 0.5
+                });
+            if let Some(p) = stage.components.iter_mut().find(|p| p.motor_mount) {
+                p.motor_length_m = entry.length_m;
+                p.motor_diameter_m = entry.diameter_m;
+            }
+            if let Some(material) = stage
+                .materials
+                .as_mut()
+                .filter(|m| m.use_material_mass || m.component_shell)
+            {
                 if old.is_some()
                     && material.hardware_mass_kg >= old_case
                     && material.hardware_mass_kg + new_case - old_case > 0.0

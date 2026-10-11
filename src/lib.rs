@@ -9,6 +9,7 @@ pub mod config;
 pub mod design;
 pub mod engineering;
 pub mod environment;
+pub mod exchange;
 pub mod experiments;
 pub mod export;
 pub mod external;
@@ -18,6 +19,7 @@ pub mod imports;
 pub mod model_physics;
 pub mod ork;
 pub mod progress;
+pub mod project;
 pub mod recovery;
 #[cfg(feature = "viewer")]
 pub mod satellite;

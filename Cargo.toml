@@ -1,13 +1,13 @@
 [package]
 name = "rocket-lab"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "Deterministic six degree of freedom sounding rocket simulator and Bevy flight laboratory"
 license = "MIT"
 
 [features]
 default = []
-viewer = ["dep:bevy", "dep:bevy_egui", "dep:reqwest", "dep:image", "dep:wgpu"]
+viewer = ["dep:bevy", "dep:bevy_egui", "dep:reqwest", "dep:image", "dep:wgpu", "dep:rfd"]
 
 [dependencies]
 glam = { version = "0.30", features = ["serde"] }
@@ -22,6 +22,7 @@ bevy_egui = { version = "0.39.1", optional = true, default-features = false, fea
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls"] }
 image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg"] }
 wgpu = { version = "27", optional = true, default-features = false, features = ["wgsl"] }
+rfd = { version = "0.17.2", optional = true, default-features = false, features = ["xdg-portal"] }
 
 [profile.dev]
 opt-level = 1

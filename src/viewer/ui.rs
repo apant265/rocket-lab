@@ -67,6 +67,11 @@ fn release_part(ctx: &egui::Context, rect: egui::Rect) -> Option<builder::DropPa
         None
     }
 }
+fn palette_pressed(ui: &egui::Ui, response: &egui::Response) -> bool {
+    ui.input(|input| input.events.iter().any(|event|
+        matches!(event, egui::Event::PointerButton {pos, button: egui::PointerButton::Primary, pressed: true, ..}
+            if response.enabled() && response.rect.contains(*pos))))
+}
 
 const PARTS: [&str; 6] = [
     "Airframe",
@@ -159,9 +164,27 @@ pub(super) fn interface(
     mut thermal: ResMut<thermal_view::ThermalView>,
     mut history: ResMut<history::History>,
     mut snapshots: ResMut<snapshot::Snapshots>,
+    mut exchange: ResMut<exchange_ui::Exchange>,
+    mut documents: ResMut<documents::Documents>,
     camera: Query<(&Camera, &GlobalTransform), With<FlightCamera>>,
 ) -> bevy::prelude::Result {
     let ctx = contexts.ctx_mut()?;
+    let file_enabled = !job.busy() && !exchange.busy() && !snapshots.busy() && !map.busy();
+    if documents.show(ctx, &mut lab, file_enabled) {
+        *history = history::History::default();
+        *snapshots = snapshot::Snapshots::default();
+        *thermal = thermal_view::ThermalView::default();
+        *map = map::MapState::default();
+        *exchange = exchange_ui::Exchange::default();
+        catalogue.armed = None;
+        catalogue.placement = None;
+        catalogue.palette_drag = false;
+        egui::DragAndDrop::clear_payload(ctx);
+    }
+    exchange.show(ctx, &mut lab, &mut history, job.busy());
+    if exchange.take_bundle_request() {
+        builder::start_model(&mut lab, &mut job);
+    }
     editor::textures(&mut catalogue, ctx);
     history.observe(
         &lab.draft,
@@ -174,6 +197,7 @@ pub(super) fn interface(
         .show(ctx, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
+                documents.controls(ui, file_enabled);
                 if ui
                     .selectable_label(
                         lab.workspace == 0,
@@ -196,11 +220,9 @@ pub(super) fn interface(
                     reset_camera(&mut lab);
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(!job.busy(), egui::Button::new("Export 3D model"))
-                        .on_hover_text("Export Blender + GLB and calculate mass, centroid and inertia from the evaluated geometry.").clicked() {
-                        builder::start_model(&mut lab, &mut job);
-                    }
-                    if primary(ui, "Launch simulation", !job.busy()) {
+                    exchange.export_button(ui, !job.busy());
+                    exchange.import_button(ui, !job.busy());
+                    if primary(ui, "Launch simulation", !job.busy() && !exchange.busy()) {
                         builder::launch(&mut lab, &mut job);
                     }
                     if ui.add_enabled(!job.busy(), egui::Button::new("Reset rocket"))
@@ -316,6 +338,7 @@ pub(super) fn interface(
     catalogue.placement = None;
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
         catalogue.armed = None;
+        catalogue.palette_drag = false;
         egui::DragAndDrop::clear_payload(ctx);
     }
     let payload = egui::DragAndDrop::payload::<builder::DropPart>(ctx)
@@ -373,21 +396,11 @@ pub(super) fn interface(
                 painter.text(
                     cursor + egui::vec2(18.0, 18.0),
                     egui::Align2::LEFT_TOP,
-                    if matches!(
-                        placement.payload,
-                        builder::DropPart::Extra(PartKind::Transition)
-                    ) {
-                        format!(
-                            "Create booster below S{}\nRelease to place · Esc cancels",
-                            placement.stage + 1
-                        )
-                    } else {
-                        format!(
-                            "Attach to S{} · {:.2} m\nRelease to place · Esc cancels",
-                            placement.stage + 1,
-                            placement.station
-                        )
-                    },
+                    format!(
+                        "Attach to S{} · {:.2} m\nRelease to place · Esc cancels",
+                        placement.stage + 1,
+                        placement.station
+                    ),
                     egui::FontId::proportional(12.0),
                     colors.accent,
                 );
@@ -403,6 +416,7 @@ pub(super) fn interface(
                     );
                     catalogue.placement = None;
                     catalogue.armed = None;
+                    catalogue.palette_drag = false;
                     lab.show_internals |= lab
                         .selected_component
                         .map_or((3..=5).contains(&lab.selected_part), |c| {
@@ -413,6 +427,10 @@ pub(super) fn interface(
         }
     } else {
         catalogue.armed = None;
+    }
+    if catalogue.palette_drag && ctx.input(|i| i.pointer.primary_released()) {
+        catalogue.armed = None;
+        catalogue.palette_drag = false;
     }
     if lab.workspace == 1 && lab.tab == 6 && snapshots.image_view {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -428,6 +446,10 @@ pub(super) fn interface(
                 .corner_radius(8.0)
                 .inner_margin(8.0)
                 .show(ui, |ui| {
+                    if lab.workspace == 1 {
+                        regime_badge(ui, &lab);
+                        ui.add_space(6.0);
+                    }
                     ui.horizontal(|ui| {
                         if ui.button("Vehicle").clicked() {
                             lab.followed_stage=None;
@@ -554,8 +576,16 @@ fn build_parts(
                     }
                     let response =
                         palette_button(ui, i, label, payload, Some(catalogue.textures[image].id()));
+                    // Preserve the press origin even when a fast drag and its
+                    // release arrive together between rendered frames.
+                    let pressed_here = palette_pressed(ui, &response);
+                    if pressed_here || response.drag_started() {
+                        catalogue.armed = Some(payload);
+                        catalogue.palette_drag = true;
+                    }
                     if response.clicked() {
                         catalogue.armed = Some(payload);
+                        catalogue.palette_drag = false;
                         lab.status =
                             "Part selected: move into 3D and click to attach; Esc cancels.".into();
                     }
@@ -998,11 +1028,63 @@ fn extra_editor(
     if ui.button("Move in 3D").clicked() {
         catalogue.armed = Some(builder::DropPart::Existing { stage, component });
     }
+    if lab.draft.stages[stage].components[component].kind == PartKind::InnerTube {
+        mount_editor(ui, lab, stage, component);
+    }
     let body_diameter = lab.draft.stages[stage].diameter_m;
+    let parents: Vec<_> = lab.draft.stages[stage]
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| matches!(p.kind, PartKind::BodyTube | PartKind::InnerTube))
+        .map(|(i, p)| (i, p.kind, p.name.clone(), p.position_m, p.length_m))
+        .collect();
     let c = &mut lab.draft.stages[stage].components[component];
+    let old_parent = c.parent_component;
+    let old_position = c.position_m;
     let before = serde_json::to_string(c).unwrap();
     section(ui, c.kind.label());
+    if let Some(mesh) = &c.mesh {
+        ui.label(format!("{} triangles · {}", mesh.indices.len()/3, if mesh.closed {"Closed"} else {"Open"}))
+            .on_hover_text("Closed geometry can use material density. Open surfaces require an entered mass; model flight distributes it over the surface. Imported models retain configured aerodynamic tables.");
+    }
     ui.text_edit_singleline(&mut c.name);
+    if matches!(
+        c.kind,
+        PartKind::InnerTube | PartKind::CenteringRing | PartKind::EngineBlock
+    ) {
+        let expected = if c.kind == PartKind::InnerTube {
+            PartKind::BodyTube
+        } else {
+            PartKind::InnerTube
+        };
+        egui::ComboBox::from_id_salt("component_parent")
+            .selected_text(
+                c.parent_component
+                    .and_then(|i| parents.iter().find(|p| p.0 == i))
+                    .map_or("Stage", |p| p.2.as_str()),
+            )
+            .show_ui(ui, |ui| {
+                ui.selectable_value(&mut c.parent_component, None, "Stage");
+                for (i, kind, name, _, length) in &parents {
+                    if *kind == expected && *length >= c.length_m {
+                        ui.selectable_value(&mut c.parent_component, Some(*i), name);
+                    }
+                }
+            });
+    }
+    if c.parent_component != old_parent {
+        if let Some(parent) = c
+            .parent_component
+            .and_then(|i| parents.iter().find(|p| p.0 == i))
+        {
+            c.position_m = c
+                .position_m
+                .clamp(parent.3, parent.3 + parent.4 - c.length_m);
+        } else {
+            c.auto_ring_fit = false;
+        }
+    }
     if c.kind.planar_fin() {
         egui::ComboBox::from_id_salt("fin_planform")
             .selected_text(c.kind.label())
@@ -1025,7 +1107,6 @@ fn extra_editor(
             });
     }
     let old_length = c.length_m;
-    let old_position = c.position_m;
     let old_offset = c.axial_offset_m;
     if number(ui, "Axial offset / m", &mut c.axial_offset_m, 0.002) {
         c.position_m += c.axial_offset_m - old_offset;
@@ -1045,13 +1126,37 @@ fn extra_editor(
             ("Outer diameter / m", &mut c.diameter_m, 0.0005),
             ("Wall thickness / m", &mut c.thickness_m, 0.0001),
         ] {
-            lab.geometry_dirty |= number(ui, label, value, speed);
+            if (c.kind != PartKind::CustomMesh || label != "Wall thickness / m")
+                && !(c.kind == PartKind::CenteringRing && c.auto_ring_fit && label != "Length / m")
+            {
+                lab.geometry_dirty |= number(
+                    ui,
+                    if c.kind == PartKind::Transition && label == "Outer diameter / m" {
+                        "Aft diameter / m"
+                    } else {
+                        label
+                    },
+                    value,
+                    speed,
+                );
+            }
         }
+    }
+    if c.kind == PartKind::CenteringRing {
+        ui.add_enabled_ui(c.parent_component.is_some(), |ui| {
+            ui.checkbox(&mut c.auto_ring_fit, "Fit to tubes");
+        });
+        let mut bore = c.diameter_m - 2. * c.thickness_m;
+        ui.add_enabled_ui(!c.auto_ring_fit, |ui| {
+            if number(ui, "Inner diameter / m", &mut bore, 0.0005) {
+                c.thickness_m = (c.diameter_m - bore) * 0.5;
+            }
+        });
     }
     if c.kind == PartKind::Transition {
         help::hint(
             ui,
-            "This booster copies the target motor and mass as a starting template. Click its body and motor in 3D to enter the actual specification.",
+            "Fore diameter faces the nose. Aft diameter faces the motor. This section belongs to the current stage.",
         );
         lab.geometry_dirty |= number(ui, "Fore diameter / m", &mut c.fore_diameter_m, 0.001);
     }
@@ -1253,7 +1358,10 @@ fn extra_editor(
         "Component dimensions and density affect mass, CG and inertia. External segments enter the preliminary geometry model.",
     );
     lab.geometry_dirty |= serde_json::to_string(c).unwrap() != before;
-    let shell = matches!(c.kind, PartKind::BodyTube | PartKind::NoseCone);
+    let shell = matches!(
+        c.kind,
+        PartKind::BodyTube | PartKind::NoseCone | PartKind::Transition
+    );
     let fin = c.kind.planar_fin();
     let recovery = c.recovery.clone();
     let apogee = c.deploy_at_apogee;
@@ -1262,6 +1370,8 @@ fn extra_editor(
     }
     let length_delta = c.length_m - old_length;
     c.cg_m = c.cg_m.min(c.length_m);
+    let position_delta = lab.draft.stages[stage].components[component].position_m - old_position;
+    assembly::move_children(&mut lab.draft.stages[stage], component, position_delta);
     if shell
         && lab.draft.stages[stage]
             .materials
@@ -1278,10 +1388,32 @@ fn extra_editor(
         }
         assembly::fit_shell(&mut lab.draft.stages[stage]);
     }
-    let c = &lab.draft.stages[stage].components[component];
-    if c.kind == PartKind::Transition && c.position_m.abs() < 1e-6 {
-        lab.draft.stages[stage].diameter_m = c.diameter_m;
+    if lab.draft.stages[stage].components[component].kind == PartKind::CustomMesh {
+        let top = stage == lab.draft.stages.len() - 1;
+        let s = &mut lab.draft.stages[stage];
+        let p = &mut s.components[component];
+        p.thickness_m = p.thickness_m.min(p.diameter_m * 0.1);
+        if s.materials.as_ref().is_some_and(|m| m.component_shell) {
+            s.length_m = s
+                .components
+                .iter()
+                .map(|p| p.position_m + p.length_m)
+                .chain([s.motor.cg_m, s.payload_cg_m, s.dry_cg_m])
+                .fold(0.02, f64::max);
+            s.diameter_m = s
+                .components
+                .iter()
+                .filter(|p| p.external())
+                .map(|p| p.diameter_m + 2. * p.radial_offset_m)
+                .fold(0.001, f64::max);
+            s.geometry = Some(crate::config::StageGeometry::generic(s, top));
+            if let Some(m) = &mut s.materials {
+                m.airframe_wall_m = m.airframe_wall_m.min(s.diameter_m * 0.1);
+                m.nose_wall_m = m.nose_wall_m.min(s.diameter_m * 0.1);
+            }
+        }
     }
+    assembly::refit_internals(&mut lab.draft.stages[stage]);
     if let Some(chute) = recovery {
         let global = lab.draft.recovery.clone();
         if stage == lab.draft.stages.len() - 1 {
@@ -1310,7 +1442,7 @@ fn extra_editor(
         structural_inputs(ui, lab, stage);
     }
     if ui.button("Remove this component").clicked() {
-        let removed = lab.draft.stages[stage].components.remove(component);
+        let removed = assembly::remove_component(&mut lab.draft.stages[stage], component);
         if removed.kind == PartKind::NoseCone {
             lab.draft.stages[stage]
                 .geometry
@@ -1320,10 +1452,101 @@ fn extra_editor(
         }
         lab.selected_component = None;
         lab.geometry_dirty = true;
+        assembly::refit_internals(&mut lab.draft.stages[stage]);
     }
     if let Err(e) = lab.draft.validate() {
         ui.colored_label(theme::palette(ui).danger, "Invalid part")
             .on_hover_text(e.to_string());
+    }
+}
+fn mount_editor(ui: &mut egui::Ui, lab: &mut Lab, stage: usize, component: usize) {
+    section(ui, "Motor mount");
+    let s = &mut lab.draft.stages[stage];
+    let mount = &mut s.components[component];
+    let before = (
+        mount.motor_mount,
+        mount.motor_length_m,
+        mount.motor_diameter_m,
+        mount.motor_overhang_m,
+    );
+    let mut enabled = mount.motor_mount;
+    let toggled = ui.checkbox(&mut enabled, "Motor mount").changed();
+    let current = lab
+        .motor_library
+        .iter()
+        .find(|m| Some(m.name.as_str()) == s.motor.name.split_whitespace().next());
+    if toggled && enabled && mount.motor_length_m <= 0.0 {
+        mount.motor_length_m = current.map_or(mount.length_m * 0.9, |m| m.length_m);
+        mount.motor_diameter_m = current.map_or(0., |m| m.diameter_m);
+    }
+    mount.motor_mount = enabled;
+    let mut chosen = None;
+    if enabled {
+        number(ui, "Motor length / m", &mut mount.motor_length_m, 0.001);
+        number(
+            ui,
+            "Motor diameter / m",
+            &mut mount.motor_diameter_m,
+            0.0005,
+        );
+        number(ui, "Motor overhang / m", &mut mount.motor_overhang_m, 0.001);
+        let bore = mount.diameter_m - 2. * mount.thickness_m;
+        let available = mount.length_m + mount.motor_overhang_m;
+        metric(ui, "Loaded motor", s.motor.name.clone());
+        ui.add(egui::TextEdit::singleline(&mut lab.motor_search).hint_text("Search motors"));
+        let query = lab.motor_search.to_lowercase();
+        egui::ComboBox::from_id_salt("mount_motor_library")
+            .selected_text("Select motor…")
+            .height(220.)
+            .show_ui(ui, |ui| {
+                for entry in lab.motor_library.iter().filter(|m| {
+                    m.name.to_lowercase().contains(&query)
+                        && m.diameter_m <= bore + 1e-8
+                        && m.length_m <= available + 1e-8
+                }) {
+                    if ui
+                        .selectable_label(
+                            false,
+                            format!(
+                                "{} · {}",
+                                entry.name,
+                                units::value(ui, "Diameter", entry.diameter_m * 1000., "mm", 2)
+                            ),
+                        )
+                        .clicked()
+                    {
+                        chosen = Some(entry.clone());
+                    }
+                }
+            });
+        if current.is_some_and(|m| m.diameter_m > bore || m.length_m > available) {
+            ui.colored_label(theme::palette(ui).danger, "Motor does not fit")
+                .on_hover_text("Increase the mount bore or length, or select a motor that fits.");
+        }
+        metric(ui, "Burn time", format!("{:.2} s", s.motor.burn_time()));
+        help::hint(
+            ui,
+            "Motors are filtered by mount bore and length. Thrust uses the selected RASP curve; the mount positions the motor at its aft end. One active motor mount per stage.",
+        );
+    }
+    lab.geometry_dirty |= before
+        != (
+            mount.motor_mount,
+            mount.motor_length_m,
+            mount.motor_diameter_m,
+            mount.motor_overhang_m,
+        );
+    if toggled && enabled {
+        for (i, p) in s.components.iter_mut().enumerate() {
+            if i != component {
+                p.motor_mount = false;
+            }
+        }
+    }
+    assembly::sync_motor_mount(s);
+    if let Some(entry) = chosen {
+        builder::select_motor(lab, &entry);
+        lab.geometry_dirty = true;
     }
 }
 fn trigger_editor(ui: &mut egui::Ui, t: &mut Trigger) {
@@ -1537,7 +1760,46 @@ fn conditions(ui: &mut egui::Ui, lab: &mut Lab, job: &mut builder::BuildJob) {
         "The projected arc uses the complete integrated flight for the applied conditions. Wind is deterministic, not a forecast.",
     );
 }
+fn regime_reading(flight: &FlightResult, time: f64, followed: Option<usize>) -> (f64, usize, bool) {
+    if let Some(stage) = followed
+        && let Some(sample) = flight
+            .debris_samples
+            .iter()
+            .rev()
+            .find(|d| d.stage == stage && d.time_s <= time)
+    {
+        return (sample.mach, stage, true);
+    }
+    let sample = crate::analysis::sample_at(flight, time);
+    (sample.mach, sample.stage, false)
+}
+fn regime_badge(ui: &mut egui::Ui, lab: &Lab) {
+    use crate::flight::Regime;
+    let (mach, stage, detached) = regime_reading(&lab.flight, lab.time, lab.followed_stage);
+    let regime = Regime::from_mach(mach);
+    let palette = theme::palette(ui);
+    let (label, color) = match regime {
+        Regime::Subsonic => ("Subsonic", palette.accent),
+        Regime::Transonic => ("Transonic", palette.warning),
+        Regime::Supersonic => ("Supersonic", palette.text),
+        Regime::Hypersonic => ("Hypersonic", palette.danger),
+    };
+    egui::Frame::new().fill(palette.raised).corner_radius(8.0).inner_margin(8.0).show(ui, |ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(label).size(20.0).strong().color(color));
+            ui.label(egui::RichText::new(format!("Mach {mach:.3}")).size(16.0).color(palette.text));
+        });
+        ui.label(egui::RichText::new(format!("{} · Stage {} · T+ {:.2} s", if detached { "Detached" } else { "Retained" }, stage + 1, lab.time)).size(11.0).color(palette.muted));
+        ui.horizontal_wrapped(|ui| {
+            for (value, title) in [(Regime::Subsonic,"Sub"), (Regime::Transonic,"Trans"), (Regime::Supersonic,"Super"), (Regime::Hypersonic,"Hyper")] {
+                let text = egui::RichText::new(title).size(11.0).color(if value == regime { color } else { palette.muted });
+                ui.label(if value == regime { text.strong().underline() } else { text });
+            }
+        });
+    }).response.on_hover_text("Air-relative Mach at the selected flight time.\nSubsonic: M < 0.8\nTransonic: 0.8 ≤ M < 1.2\nSupersonic: 1.2 ≤ M < 5\nHypersonic: M ≥ 5\nFollows the selected detached stage when its telemetry is available.");
+}
 fn telemetry(ui: &mut egui::Ui, lab: &mut Lab, image_view: bool, snapshots: &snapshot::Snapshots) {
+    regime_badge(ui, lab);
     let sample = crate::analysis::sample_at(&lab.flight, lab.time);
     if let Some(stage) = lab.followed_stage {
         section(ui, &format!("FOLLOWING DETACHED S{}", stage + 1));
@@ -1581,8 +1843,7 @@ fn telemetry(ui: &mut egui::Ui, lab: &mut Lab, image_view: bool, snapshots: &sna
         );
     }
     ui.label(
-        egui::RichText::new(format!("{:?} / STAGE {}", sample.regime, sample.stage + 1))
-            .color(theme::palette(ui).accent),
+        egui::RichText::new(format!("STAGE {}", sample.stage + 1)).color(theme::palette(ui).accent),
     );
     metric(
         ui,
@@ -1978,6 +2239,48 @@ fn editor(ctx: &egui::Context, lab: &mut Lab, job: &builder::BuildJob) {
 mod tests {
     use super::*;
     #[test]
+    fn regime_display_tracks_all_regimes_and_reverse_seeking() {
+        use crate::flight::Regime;
+        let mut flight = Simulator::new(Mission::demo(false)).unwrap().into_result();
+        let initial = flight.samples[0].clone();
+        flight.samples = [0.5, 1.0, 2.0, 6.0]
+            .into_iter()
+            .enumerate()
+            .map(|(i, mach)| {
+                let mut sample = initial.clone();
+                sample.time_s = i as f64;
+                sample.mach = mach;
+                sample
+            })
+            .collect();
+        flight.summary.end_time_s = 3.;
+        for (time, expected) in [
+            (0., Regime::Subsonic),
+            (1., Regime::Transonic),
+            (2., Regime::Supersonic),
+            (3., Regime::Hypersonic),
+            (2., Regime::Supersonic),
+            (0., Regime::Subsonic),
+        ] {
+            let (mach, stage, detached) = regime_reading(&flight, time, None);
+            assert_eq!(Regime::from_mach(mach), expected);
+            assert_eq!(stage, 0);
+            assert!(!detached);
+        }
+        // Interpolated Mach crosses the boundary before the next stored sample.
+        assert_eq!(
+            Regime::from_mach(regime_reading(&flight, 0.7, None).0),
+            Regime::Transonic
+        );
+        for (mach, expected) in [
+            (0.8, Regime::Transonic),
+            (1.2, Regime::Supersonic),
+            (5.0, Regime::Hypersonic),
+        ] {
+            assert_eq!(Regime::from_mach(mach), expected);
+        }
+    }
+    #[test]
     fn sidebar_text_and_values_stay_clear_of_scrollbars_in_both_themes() {
         for theme in [theme::Theme::Dark, theme::Theme::Light] {
             for width in [190., 265., 400.] {
@@ -2304,6 +2607,91 @@ mod tests {
 #[cfg(test)]
 mod parts_tests {
     use super::*;
+    #[test]
+    fn palette_keeps_a_fast_drag_press_when_release_arrives_in_the_same_frame() {
+        for enabled in [true, false] {
+            let ctx = egui::Context::default();
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800., 600.));
+            let mut source = egui::Rect::NOTHING;
+            let mut pressed = false;
+            let mut released_inside = false;
+            {
+                let mut frame = |events| {
+                    let _ = ctx.run(
+                        egui::RawInput {
+                            screen_rect: Some(screen),
+                            events,
+                            ..Default::default()
+                        },
+                        |ctx| {
+                            egui::SidePanel::left("fast_palette")
+                                .exact_width(200.)
+                                .show(ctx, |ui| {
+                                    ui.add_enabled_ui(enabled, |ui| {
+                                        let response = palette_button(
+                                            ui,
+                                            0,
+                                            "Transition",
+                                            builder::DropPart::Extra(PartKind::Transition),
+                                            None,
+                                        );
+                                        source = response.rect;
+                                        pressed = palette_pressed(ui, &response);
+                                    });
+                                });
+                            released_inside = ctx.input(|i| i.pointer.primary_released())
+                                && ctx
+                                    .pointer_interact_pos()
+                                    .is_some_and(|p| ctx.available_rect().contains(p));
+                        },
+                    );
+                };
+                frame(vec![]);
+            }
+            let origin = source.center();
+            let destination = egui::pos2(500., 300.);
+            let edge = |pos, pressed| egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            };
+            let _ = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(screen),
+                    events: vec![
+                        egui::Event::PointerMoved(origin),
+                        edge(origin, true),
+                        egui::Event::PointerMoved(destination),
+                        edge(destination, false),
+                    ],
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::SidePanel::left("fast_palette")
+                        .exact_width(200.)
+                        .show(ctx, |ui| {
+                            ui.add_enabled_ui(enabled, |ui| {
+                                let response = palette_button(
+                                    ui,
+                                    0,
+                                    "Transition",
+                                    builder::DropPart::Extra(PartKind::Transition),
+                                    None,
+                                );
+                                pressed = palette_pressed(ui, &response);
+                            });
+                        });
+                    released_inside = ctx.input(|i| i.pointer.primary_released())
+                        && ctx
+                            .pointer_interact_pos()
+                            .is_some_and(|p| ctx.available_rect().contains(p));
+                },
+            );
+            assert_eq!(pressed, enabled);
+            assert!(released_inside);
+        }
+    }
     #[test]
     fn catalogue_has_the_core_openrocket_families_without_duplicates_or_stage_card() {
         let cards = palette_entries();

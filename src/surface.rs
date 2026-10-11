@@ -7,10 +7,10 @@ use crate::{
     flight::Telemetry,
 };
 use glam::{DQuat, DVec3};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshDocument {
     #[serde(default)]
     pub physics_version: u32,
@@ -19,7 +19,7 @@ pub struct MeshDocument {
     pub stages: Vec<MeshStage>,
     pub parts: Vec<MeshPart>,
 }
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshStage {
     #[serde(default)]
     pub components: Option<serde_json::Value>,
@@ -30,7 +30,7 @@ pub struct MeshStage {
     #[serde(default)]
     pub geometry: Option<crate::config::StageGeometry>,
 }
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MeshPart {
     #[serde(default)]
     pub component_index: Option<usize>,
@@ -48,7 +48,9 @@ impl MeshDocument {
         let mut rings: Vec<[f32; 2]> = self
             .parts
             .iter()
-            .filter(|p| p.stage >= stage && (p.kind == "body" || p.kind == "nose"))
+            .filter(|p| {
+                p.stage >= stage && matches!(p.kind.as_str(), "body" | "nose" | "custom_mesh")
+            })
             .flat_map(|p| p.positions.iter().map(|v| [-v[1], v[0].hypot(v[2])]))
             .collect();
         rings.sort_by(|a, b| a[0].total_cmp(&b[0]).then(b[1].total_cmp(&a[1])));
@@ -82,7 +84,7 @@ impl MeshDocument {
                 })
                 .transpose()?;
             if (b.materials.as_ref().is_some_and(|m| m.component_shell) != a.component_shell)
-                || (b.components.iter().any(|p| p.external())
+                || ((a.components.is_some() || b.components.iter().any(|p| p.external()))
                     && components.as_ref() != Some(&serde_json::to_value(&b.components)?))
             {
                 return Err("Exterior component layout changed; regenerate Blender model".into());

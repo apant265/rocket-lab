@@ -9,6 +9,44 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Import STL/OBJ or CAD/scene geometry as an editable stage component.
+    ImportGeometry {
+        #[arg(long)]
+        mission: PathBuf,
+        #[arg(long)]
+        input: PathBuf,
+        #[arg(long, default_value_t = 0)]
+        stage: usize,
+        #[arg(long)]
+        replace: bool,
+        #[arg(long, value_enum, default_value = "millimeters")]
+        units: rocket_lab::exchange::Units,
+        #[arg(long, value_enum, default_value = "z")]
+        axis: rocket_lab::exchange::Axis,
+        #[arg(long, default_value_t = 0.1)]
+        tolerance_mm: f64,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Export evaluated rocket geometry to a mesh or faceted CAD format.
+    ExportGeometry {
+        #[arg(long)]
+        mission: PathBuf,
+        #[arg(long)]
+        model: Option<PathBuf>,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long)]
+        stage: Option<usize>,
+        #[arg(long, requires = "stage")]
+        component: Option<usize>,
+        #[arg(long)]
+        no_fittings: bool,
+        #[arg(long, value_enum, default_value = "millimeters")]
+        units: rocket_lab::exchange::Units,
+        #[arg(long, value_enum, default_value = "z")]
+        axis: rocket_lab::exchange::Axis,
+    },
     /// Export an evaluated Blender/GLB model; optionally run its mesh-based flight.
     ExportModel {
         #[arg(long)]
@@ -233,6 +271,62 @@ fn print(value: &impl serde::Serialize) -> Result<()> {
 }
 fn run() -> Result<()> {
     match Cli::parse().command {
+        Command::ImportGeometry {
+            mission,
+            input,
+            stage,
+            replace,
+            units,
+            axis,
+            tolerance_mm,
+            out,
+        } => {
+            let mut m = Mission::load(mission)?;
+            let geometry = rocket_lab::exchange::import(&input, units, axis, tolerance_mm)?;
+            let index = rocket_lab::exchange::insert(&mut m, stage, geometry, replace)?;
+            m.save(&out)?;
+            println!(
+                "Imported stage {} component {} into {}",
+                stage,
+                index,
+                out.display()
+            );
+        }
+        Command::ExportGeometry {
+            mission,
+            model,
+            out,
+            stage,
+            component,
+            no_fittings,
+            units,
+            axis,
+        } => {
+            let mut m = Mission::load(mission)?;
+            rocket_lab::design::initialize_geometry(&mut m);
+            let model = if let Some(path) = model {
+                rocket_lab::surface::MeshDocument::load(path, &m)?
+            } else {
+                let directory = std::env::current_dir()?.join(format!(
+                    "output/exchange/cli-export-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)?
+                        .as_nanos()
+                ));
+                rocket_lab::model_physics::export_model(&m, &directory)?;
+                rocket_lab::surface::MeshDocument::load(directory.join("rocket.mesh.json"), &m)?
+            };
+            rocket_lab::exchange::export(
+                &model,
+                &out,
+                units,
+                axis,
+                stage,
+                component,
+                !no_fittings,
+            )?;
+            println!("Exported {}", out.display());
+        }
         Command::External {
             mission,
             time,

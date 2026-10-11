@@ -341,7 +341,8 @@ pub fn apply(model: &MeshDocument, mission: &mut Mission) -> Result<()> {
                 }
                 pieces.push(lump(p.mass(), p.cg(), p.length_m, p.diameter_m * 0.5));
             } else {
-                let integral = integrate(&group, offset, true)?;
+                let volume = p.mesh.as_ref().is_none_or(|mesh| mesh.closed);
+                let integral = integrate(&group, offset, volume)?;
                 let mass = if p.mass_override {
                     p.mass()
                 } else {
@@ -358,7 +359,12 @@ pub fn apply(model: &MeshDocument, mission: &mut Mission) -> Result<()> {
         let inertia = pieces.iter().fold(DMat3::ZERO, |i, p| {
             i + p.inertia + parallel_axis(p.mass, p.center - center)
         });
-        let (side_area_m2, side_station_m) = projection(&physical, offset);
+        let exterior: Vec<_> = physical
+            .iter()
+            .copied()
+            .filter(|p| p.kind != "internal")
+            .collect();
+        let (side_area_m2, side_station_m) = projection(&exterior, offset);
         let properties = ModelMass {
             mass_kg: mass,
             centroid_m: center.to_array(),
@@ -504,6 +510,42 @@ mod tests {
         assert!((p.inertia.x_axis.x - 5.0).abs() < 1e-10);
         mesh.indices.truncate(mesh.indices.len() - 3);
         assert!(integrate(&[&mesh], 0.0, true).is_err());
+    }
+    #[test]
+    fn exported_internal_geometry_adds_mass_without_crossflow_area() {
+        let mut m = Mission::demo(false);
+        let exterior = cuboid(
+            DVec3::new(0.15, 0.15, 2.4),
+            DVec3::new(0., 0., -1.2),
+            DQuat::IDENTITY,
+        );
+        apply(&model(&m, exterior.clone()), &mut m).unwrap();
+        let base = m.stages[0].model_mass.clone().unwrap();
+        m.stages[0].model_mass = None;
+        let mut tube =
+            crate::assembly::Part::new(crate::assembly::PartKind::InnerTube, &m.stages[0]);
+        tube.mass_override = true;
+        tube.mass_kg = 2.;
+        m.stages[0].components.push(tube);
+        let mut inner = cuboid(
+            DVec3::new(0.05, 0.05, 0.2),
+            DVec3::new(0., 0., -1.),
+            DQuat::IDENTITY,
+        );
+        inner.kind = "internal".into();
+        inner.component_index = Some(0);
+        let mut geometry = model(&m, exterior);
+        geometry.parts.push(inner);
+        apply(&geometry, &mut m).unwrap();
+        let with = m.stages[0].model_mass.as_ref().unwrap();
+        assert!((with.mass_kg - base.mass_kg - 2.).abs() < 1e-10);
+        assert_eq!(with.side_area_m2, base.side_area_m2);
+        assert_eq!(with.side_station_m, base.side_station_m);
+        m.stages[0].components[0].length_m *= 0.9;
+        assert!(
+            geometry.validate(&m).is_err(),
+            "edited inner-tube geometry must invalidate an evaluated model"
+        );
     }
     fn model(m: &Mission, mesh: MeshPart) -> MeshDocument {
         MeshDocument {

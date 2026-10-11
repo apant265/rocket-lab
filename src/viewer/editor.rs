@@ -10,6 +10,7 @@ pub(super) struct Editor {
     pub category: usize,
     pub placement: Option<Placement>,
     pub armed: Option<DropPart>,
+    pub palette_drag: bool,
     pick_meshes: Vec<PickMesh>,
     canopy_meshes: Vec<PickMesh>,
     canopy_signature: String,
@@ -335,7 +336,10 @@ pub(super) fn locate(draft: &Mission, payload: DropPart, station: f64) -> Placem
         offset = 0.0;
     }
     let s = &draft.stages[selected];
-    if exterior_kind == Some(PartKind::BodyTube) {
+    if matches!(
+        exterior_kind,
+        Some(PartKind::BodyTube | PartKind::Transition)
+    ) {
         return Placement {
             payload,
             stage: selected,
@@ -445,6 +449,21 @@ fn extra(p: &Part) -> Piece {
         p.appearance_rgba[3],
     );
     let mesh = match p.kind {
+        PartKind::CustomMesh => {
+            let mut mesh = Mesh::new(
+                PrimitiveTopology::TriangleList,
+                RenderAssetUsages::default(),
+            );
+            if let Some(source) = &p.mesh {
+                mesh.insert_attribute(
+                    Mesh::ATTRIBUTE_POSITION,
+                    source.scaled_positions(p.length_m, p.diameter_m),
+                );
+                mesh.insert_indices(Indices::U32(source.indices.clone()));
+                mesh.compute_area_weighted_normals();
+            }
+            mesh
+        }
         PartKind::BodyTube
         | PartKind::InnerTube
         | PartKind::Coupler
@@ -686,8 +705,25 @@ fn builtin(s: &crate::config::Stage, index: usize) -> Vec<Piece> {
         }
         2 => vec![piece(fin_mesh(s), 0., Color::srgb(0.25, 0.38, 0.45), false)],
         3 => vec![piece(
-            Cylinder::new(r * 0.65, l * 0.24).mesh().build(),
-            l * 0.85,
+            Cylinder::new(
+                s.components
+                    .iter()
+                    .find(|p| p.motor_mount)
+                    .map_or(r * 0.65, |p| {
+                        if p.motor_diameter_m > 0. {
+                            p.motor_diameter_m as f32 * 0.5
+                        } else {
+                            (p.diameter_m - 2. * p.thickness_m) as f32 * 0.45
+                        }
+                    }),
+                s.components
+                    .iter()
+                    .find(|p| p.motor_mount)
+                    .map_or(l * 0.24, |p| p.motor_length_m as f32),
+            )
+            .mesh()
+            .build(),
+            s.motor.cg_m as f32,
             Color::srgb(0.51, 0.58, 0.65),
             true,
         )],
@@ -883,7 +919,10 @@ pub(super) fn update(
         None
     };
     let ghost_signature = placement.map_or(String::new(), |p| {
-        format!("{:?}/{} / {}", p.payload, p.stage, editor.signature)
+        format!(
+            "{:?}/{}/{:.4}/{}",
+            p.payload, p.stage, p.station, editor.signature
+        )
     });
     if ghost_signature == editor.ghost_signature {
         if let Some(p) = placement {
@@ -921,10 +960,9 @@ pub(super) fn update(
             .sum::<f32>();
         let mut pieces = match p.payload {
             DropPart::Builtin(0) => {
-                let mut part = Part::new(PartKind::BodyTube, s);
-                part.diameter_m = s.diameter_m;
-                part.position_m = p.station;
-                extra_instances(&part)
+                let mut preview = s.clone();
+                let index = crate::assembly::attach_tube(&mut preview, p.station);
+                extra_instances(&preview.components[index])
             }
             DropPart::Builtin(1) => {
                 let mut part = Part::new(PartKind::NoseCone, s);
@@ -943,9 +981,17 @@ pub(super) fn update(
                     part.diameter_m = s.diameter_m;
                 }
                 if k == PartKind::Transition {
-                    part.position_m = s.length_m;
-                    part.fore_diameter_m = s.diameter_m;
-                    part.diameter_m = s.diameter_m * 1.2;
+                    let mut preview = s.clone();
+                    let index = crate::assembly::attach_transition(&mut preview, p.station);
+                    part = preview.components[index].clone();
+                }
+                if matches!(
+                    k,
+                    PartKind::InnerTube | PartKind::CenteringRing | PartKind::EngineBlock
+                ) {
+                    let mut preview = s.clone();
+                    let index = crate::assembly::attach_internal(&mut preview, k, p.station);
+                    part = preview.components[index].clone();
                 }
                 extra_instances(&part)
             }
@@ -1076,7 +1122,7 @@ mod tests {
         builder::initialize_geometry(&mut m);
         let s = &m.stages[0];
         let mut e = picker(s);
-        let origin = Vec3::new(5.0, -s.length_m as f32 * 0.85, 0.0);
+        let origin = Vec3::new(5.0, -s.motor.cg_m as f32, 0.0);
         assert_ne!(e.pick(origin, -Vec3::X, false).unwrap().builtin, 3);
         assert_eq!(e.pick(origin, -Vec3::X, true).unwrap().builtin, 3);
         e.pick_meshes.clear();

@@ -86,7 +86,19 @@ def build_component(p, offset, stage_index):
     kind = p['kind']; pos = offset+p['position_m']; length = p['length_m']; radius = p['diameter_m']*.5
     planar = kind in ('fin_set', 'elliptical_fin', 'freeform_fin')
     tubes = kind in ('tube_fin', 'launch_lug', 'pod_set')
-    if kind not in ('body_tube', 'nose_cone', 'transition') and not planar and not tubes:
+    internal = kind in ('inner_tube', 'coupler', 'centering_ring', 'engine_block', 'bulkhead')
+    if kind == 'custom_mesh':
+        data = p['mesh']; radial_scale = p['diameter_m'] / data['diameter_m']; axial_scale = length / data['length_m']
+        vertices = [(v[0]*radial_scale, -v[2]*radial_scale, v[1]*axial_scale-pos-length*.5) for v in data['positions']]
+        faces = [tuple(data['indices'][i:i+3]) for i in range(0, len(data['indices']), 3)]
+        color = p.get('appearance_rgba', [.96, .61, .18, 1])[:3]
+        mat = material(p['name']+' finish', color)
+        for index in range(p.get('instance_count', 1)):
+            angle = math.radians(p.get('radial_angle_deg', 0))+index*math.tau/p.get('instance_count', 1)
+            obj = mesh_object(p['name']+f' {index+1}', vertices, faces, stage_index, mat, 'custom_mesh')
+            obj.location = (p.get('radial_offset_m', 0)*math.cos(angle), p.get('radial_offset_m', 0)*math.sin(angle), 0)
+        return
+    if kind not in ('body_tube', 'nose_cone', 'transition') and not planar and not tubes and not internal:
         return
     color = p.get('appearance_rgba', [.96, .61, .18, 1])[:3]
     roughness = {'Rough':.9, 'Normal':.5, 'Smooth':.3, 'Polished':.15}.get(p.get('finish'), .5)
@@ -112,12 +124,15 @@ def build_component(p, offset, stage_index):
             faces += [(j,(j+1)%n,(j+1)%n+n,j+n) for j in range(n)]
             mesh_object(p['name']+f' {index+1}', vertices, faces, stage_index, mat, 'fin')
         return
-    if tubes:
+    if kind == 'bulkhead':
+        lathe(p['name'], [(pos, radius), (pos+length, radius)], stage_index, mat, 'internal')
+        return
+    if tubes or internal:
         wall = p['thickness_m']; bore = max(1e-7, radius-wall)
         rings = [(pos,radius), (pos+length,radius), (pos+length,bore), (pos,bore), (pos,radius)]
         for index in range(p.get('instance_count', 1)):
             angle = angle0+index*math.tau/p.get('instance_count', 1)
-            obj = lathe(p['name']+f' {index+1}', rings, stage_index, mat, kind, caps=False)
+            obj = lathe(p['name']+f' {index+1}', rings, stage_index, mat, 'internal' if internal else kind, caps=False)
             obj.location = (radial_offset*math.cos(angle), radial_offset*math.sin(angle), 0)
         return
     fore = p.get('fore_diameter_m', 0)*.5 if kind == 'transition' else radius
@@ -265,7 +280,7 @@ document = {'schema_version':1,'physics_version':1,'generator':f'Blender {bpy.ap
             'mission_sha256':hashlib.sha256(mission_path.read_bytes()).hexdigest(),
             'coordinate_system':'Bevy model: +Y nose, X/Z radial; whole-stack nose at origin; meters',
             'stages':[{'length_m':s['length_m'],'diameter_m':s['diameter_m'],'geometry':s.get('geometry'),'components':s.get('components',[]),'component_shell':s.get('materials',{}).get('component_shell',False)} for s in stages],
-            'notes':['Evaluated physical exterior geometry; material volumes or measured mass distribution consumed by Rust model physics. Internal hardware remains lumped. Not CFD certification.',
+            'notes':['Evaluated exterior and structural internal geometry; material volumes or measured mass distribution consumed by Rust model physics. Packed recovery, payload and generic motor hardware remain mission inputs. Not CFD certification.',
                      'RASAero fin Location interpreted as distance forward from stage aft end; verify native placement and nesting.',
                      'Coupler seams, retention rings and nozzle contours are illustrative.'], 'parts':[]}
 depsgraph = bpy.context.evaluated_depsgraph_get()

@@ -198,6 +198,7 @@ impl Structure {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PartKind {
+    CustomMesh,
     BodyTube,
     NoseCone,
     Transition,
@@ -222,6 +223,7 @@ pub enum PartKind {
 impl PartKind {
     pub fn label(self) -> &'static str {
         match self {
+            Self::CustomMesh => "Imported model",
             Self::BodyTube => "Body tube",
             Self::NoseCone => "Nose cone",
             Self::Transition => "Transition",
@@ -251,6 +253,22 @@ impl PartKind {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Part {
+    /// Index of the containing tube in this stage. Positions remain stage-local.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_component: Option<usize>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub auto_ring_fit: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub motor_mount: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub motor_length_m: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub motor_diameter_m: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub motor_overhang_m: f64,
+    /// Embedded, centered +Y-nose triangle geometry; portable with saved missions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mesh: Option<crate::exchange::Geometry>,
     #[serde(default)]
     pub auto_tube_diameter: bool,
     #[serde(default = "one")]
@@ -294,6 +312,12 @@ pub struct Part {
 }
 fn one() -> u32 {
     1
+}
+fn is_false(v: &bool) -> bool {
+    !v
+}
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
 }
 fn normal_finish() -> String {
     "Normal".into()
@@ -392,6 +416,13 @@ impl Part {
         }
         .min(s.length_m * 0.1);
         let mut part = Self {
+            parent_component: None,
+            auto_ring_fit: false,
+            motor_mount: false,
+            motor_length_m: 0.0,
+            motor_diameter_m: 0.0,
+            motor_overhang_m: 0.0,
+            mesh: None,
             auto_tube_diameter: kind == PartKind::TubeFin,
             instance_count: if kind == PartKind::TubeFin {
                 6
@@ -495,6 +526,11 @@ impl Part {
         if self.mass_override {
             return self.mass_kg;
         }
+        if let Some(mesh) = &self.mesh {
+            return mesh.volume_m3 * (self.diameter_m / mesh.diameter_m).powi(2) * self.length_m
+                / mesh.length_m
+                * self.material.density_kg_m3;
+        }
         let r = self.diameter_m * 0.5;
         if self.kind.planar_fin()
             && let Some(g) = &self.shape
@@ -528,6 +564,8 @@ impl Part {
                 self.cg_m
             } else if self.kind.planar_fin() && self.shape.is_some() {
                 self.fin_area_cg().1
+            } else if let Some(mesh) = &self.mesh {
+                self.length_m * (0.5 - mesh.centroid_m[1] / mesh.length_m)
             } else if self.kind == PartKind::NoseCone {
                 self.length_m * 2.0 / 3.0
             } else {
@@ -537,7 +575,8 @@ impl Part {
     pub fn external(&self) -> bool {
         matches!(
             self.kind,
-            PartKind::BodyTube
+            PartKind::CustomMesh
+                | PartKind::BodyTube
                 | PartKind::NoseCone
                 | PartKind::Transition
                 | PartKind::FinSet
@@ -697,6 +736,30 @@ pub fn shift_aft(s: &mut Stage, plane: f64, delta: f64, except: Option<usize>) {
 }
 
 pub fn fit_shell(s: &mut Stage) {
+    if s.materials.as_ref().is_some_and(|m| m.component_shell)
+        && let Some(diameter) = s
+            .components
+            .iter()
+            .filter(|p| {
+                matches!(
+                    p.kind,
+                    PartKind::BodyTube
+                        | PartKind::NoseCone
+                        | PartKind::Transition
+                        | PartKind::CustomMesh
+                )
+            })
+            .map(|p| {
+                if p.kind == PartKind::Transition {
+                    p.diameter_m.max(p.fore_diameter_m)
+                } else {
+                    p.diameter_m
+                }
+            })
+            .reduce(f64::max)
+    {
+        s.diameter_m = diameter;
+    }
     let min = s
         .components
         .iter()
@@ -745,29 +808,16 @@ pub fn fit_shell(s: &mut Stage) {
 
 /// End attachment on the pointed tube, or on the existing implicit airframe.
 pub fn tube_attachment(s: &Stage, cursor: f64) -> f64 {
-    if let Some(p) = s
-        .components
+    let implicit = (!s.materials.as_ref().is_some_and(|m| m.component_shell))
+        .then_some([airframe_front_m(s), s.length_m]);
+    s.components
         .iter()
-        .filter(|p| p.kind == PartKind::BodyTube)
-        .min_by(|a, b| {
-            let distance = |p: &Part| {
-                (cursor - p.position_m)
-                    .abs()
-                    .min((cursor - p.position_m - p.length_m).abs())
-            };
-            distance(a).total_cmp(&distance(b))
-        })
-    {
-        if cursor < p.position_m + p.length_m * 0.5 {
-            p.position_m
-        } else {
-            p.position_m + p.length_m
-        }
-    } else if cursor < (airframe_front_m(s) + s.length_m) * 0.5 {
-        airframe_front_m(s)
-    } else {
-        s.length_m
-    }
+        .filter(|p| matches!(p.kind, PartKind::BodyTube | PartKind::Transition))
+        .map(|p| [p.position_m, p.position_m + p.length_m])
+        .chain(implicit)
+        .flatten()
+        .min_by(|a, b| (cursor - a).abs().total_cmp(&(cursor - b).abs()))
+        .unwrap_or(s.length_m)
 }
 
 pub fn attach_tube(s: &mut Stage, station: f64) -> usize {
@@ -775,7 +825,7 @@ pub fn attach_tube(s: &mut Stage, station: f64) -> usize {
     let mut p = Part::new(PartKind::BodyTube, s);
     p.name = "Body tube".into();
     p.position_m = station;
-    p.diameter_m = s.diameter_m;
+    p.diameter_m = attachment_diameter(s, station);
     if let Some(m) = &s.materials {
         p.material = m.airframe.clone();
         p.thickness_m = m.airframe_wall_m;
@@ -784,6 +834,194 @@ pub fn attach_tube(s: &mut Stage, station: f64) -> usize {
     s.components.push(p);
     fit_shell(s);
     s.components.len() - 1
+}
+
+fn attachment_diameter(s: &Stage, station: f64) -> f64 {
+    let aft = s.components.iter().find(|p| {
+        matches!(p.kind, PartKind::BodyTube | PartKind::Transition)
+            && (p.position_m + p.length_m - station).abs() < 1e-7
+    });
+    if let Some(p) = aft {
+        return p.diameter_m;
+    }
+    s.components
+        .iter()
+        .find(|p| {
+            matches!(p.kind, PartKind::BodyTube | PartKind::Transition)
+                && (p.position_m - station).abs() < 1e-7
+        })
+        .map_or(s.diameter_m, |p| {
+            if p.kind == PartKind::Transition {
+                p.fore_diameter_m
+            } else {
+                p.diameter_m
+            }
+        })
+}
+
+/// A transition is a shell section in the current stage, never a stage command.
+pub fn attach_transition(s: &mut Stage, station: f64) -> usize {
+    explicit_shell(s);
+    let mut p = Part::new(PartKind::Transition, s);
+    p.position_m = station;
+    p.fore_diameter_m = attachment_diameter(s, station);
+    p.diameter_m = p.fore_diameter_m * 0.8;
+    if let Some(m) = &s.materials {
+        p.material = m.airframe.clone();
+        p.thickness_m = m.airframe_wall_m.min(p.diameter_m * 0.1);
+    }
+    // Match the tube below an insertion; at the tail the next dropped tube
+    // inherits the transition's aft diameter instead.
+    if let Some(next) = s
+        .components
+        .iter()
+        .find(|p| p.kind == PartKind::BodyTube && (p.position_m - station).abs() < 1e-7)
+    {
+        p.diameter_m = next.diameter_m;
+    }
+    shift_aft(s, station, p.length_m, None);
+    s.components.push(p);
+    fit_shell(s);
+    s.components.len() - 1
+}
+
+/// Internal tubes attach inside a body; rings attach around an inner tube.
+pub fn attach_internal(s: &mut Stage, kind: PartKind, station: f64) -> usize {
+    explicit_shell(s);
+    let wanted = if matches!(kind, PartKind::CenteringRing | PartKind::EngineBlock) {
+        PartKind::InnerTube
+    } else {
+        PartKind::BodyTube
+    };
+    let parent = s
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.kind == wanted)
+        .min_by(|(_, a), (_, b)| {
+            let distance = |p: &Part| {
+                (p.position_m - station).max(0.) + (station - p.position_m - p.length_m).max(0.)
+            };
+            distance(a).total_cmp(&distance(b))
+        })
+        .map(|(i, _)| i);
+    let mut p = Part::new(kind, s);
+    p.parent_component = parent;
+    if let Some(i) = parent {
+        let tube = &s.components[i];
+        p.length_m = p.length_m.min(tube.length_m);
+        p.position_m = station.clamp(
+            tube.position_m,
+            tube.position_m + tube.length_m - p.length_m,
+        );
+        if kind == PartKind::InnerTube {
+            p.diameter_m = (tube.diameter_m - 2. * tube.thickness_m) * 0.6;
+        }
+        if kind == PartKind::EngineBlock {
+            p.diameter_m = tube.diameter_m - 2. * tube.thickness_m;
+            p.thickness_m = p.diameter_m * 0.225;
+        }
+        p.auto_ring_fit = kind == PartKind::CenteringRing;
+    } else {
+        p.position_m = station.clamp(0., (s.length_m - p.length_m).max(0.));
+    }
+    s.components.push(p);
+    let index = s.components.len() - 1;
+    refit_internals(s);
+    index
+}
+
+/// Keep rings coaxial and fit their bore to the tube they surround.
+pub fn refit_internals(s: &mut Stage) {
+    for i in 0..s.components.len() {
+        let Some(parent) = s.components[i].parent_component else {
+            continue;
+        };
+        if parent >= s.components.len() {
+            continue;
+        }
+        if s.components[i].auto_ring_fit && s.components[i].kind == PartKind::CenteringRing {
+            let mount = &s.components[parent];
+            let outer = mount
+                .parent_component
+                .and_then(|j| s.components.get(j))
+                .map_or(
+                    s.diameter_m - 2. * s.materials.as_ref().map_or(0.002, |m| m.airframe_wall_m),
+                    |body| body.diameter_m - 2. * body.thickness_m,
+                );
+            let bore = mount.diameter_m;
+            let radial = mount.radial_offset_m;
+            s.components[i].diameter_m = outer;
+            s.components[i].thickness_m = (outer - bore) * 0.5;
+            s.components[i].radial_offset_m = radial;
+        }
+    }
+    sync_motor_mount(s);
+}
+
+pub fn sync_motor_mount(s: &mut Stage) {
+    if let Some(p) = s.components.iter().find(|p| p.motor_mount) {
+        s.motor.cg_m = p.position_m + p.length_m + p.motor_overhang_m - p.motor_length_m * 0.5;
+    }
+}
+
+/// Children follow a moved tube without changing their local axial offsets.
+pub fn move_children(s: &mut Stage, parent: usize, delta: f64) {
+    let children: Vec<_> = s
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| p.parent_component == Some(parent))
+        .map(|(i, _)| i)
+        .collect();
+    for child in children {
+        s.components[child].position_m += delta;
+        move_children(s, child, delta);
+    }
+}
+
+/// Reindex references when deleting a part; detached children keep their position.
+pub fn remove_component(s: &mut Stage, index: usize) -> Part {
+    let removed = s.components.remove(index);
+    for p in &mut s.components {
+        if let Some(parent) = p.parent_component {
+            if parent == index {
+                p.parent_component = None;
+                p.auto_ring_fit = false;
+            } else if parent > index {
+                p.parent_component = Some(parent - 1);
+            }
+        }
+    }
+    removed
+}
+
+/// Extract a component with its children; returned parent indexes are local.
+pub fn take_component_tree(s: &mut Stage, root: usize) -> Vec<Part> {
+    let mut indexes = vec![root];
+    let mut cursor = 0;
+    while cursor < indexes.len() {
+        let parent = indexes[cursor];
+        indexes.extend(
+            s.components
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.parent_component == Some(parent))
+                .map(|(i, _)| i),
+        );
+        cursor += 1;
+    }
+    let mut parts: Vec<_> = indexes.iter().map(|&i| s.components[i].clone()).collect();
+    for p in &mut parts {
+        p.parent_component = p
+            .parent_component
+            .and_then(|parent| indexes.iter().position(|&i| i == parent));
+    }
+    indexes.sort_unstable();
+    for i in indexes.into_iter().rev() {
+        remove_component(s, i);
+    }
+    parts
 }
 
 pub fn attach_nose(s: &mut Stage) -> usize {
@@ -871,6 +1109,64 @@ pub fn dry_pieces(s: &Stage) -> Vec<(f64, f64, f64, f64)> {
     p
 }
 pub fn validate(s: &Stage) -> Result<()> {
+    if s.components.iter().filter(|p| p.motor_mount).count() > 1 {
+        return Err("Only one active motor mount is supported per stage".into());
+    }
+    for (i, p) in s.components.iter().enumerate() {
+        if p.motor_mount
+            && (p.kind != PartKind::InnerTube
+                || p.instance_count != 1
+                || !p.motor_length_m.is_finite()
+                || p.motor_length_m <= 0.0
+                || !p.motor_overhang_m.is_finite()
+                || p.motor_length_m > p.length_m + p.motor_overhang_m
+                || !p.motor_diameter_m.is_finite()
+                || p.motor_diameter_m < 0.0
+                || p.motor_diameter_m > p.diameter_m - 2. * p.thickness_m + 1e-8
+                || p.motor_overhang_m < 0.0)
+        {
+            return Err(
+                "Motor mount needs one inner tube and a motor that fits its length / overhang"
+                    .into(),
+            );
+        }
+        if let Some(parent) = p.parent_component {
+            let tube = s.components.get(parent).ok_or("Missing parent tube")?;
+            if !matches!(
+                p.kind,
+                PartKind::InnerTube | PartKind::CenteringRing | PartKind::EngineBlock
+            ) {
+                return Err("Only internal tube / ring components can have a parent tube".into());
+            }
+            let expected = if matches!(p.kind, PartKind::CenteringRing | PartKind::EngineBlock) {
+                PartKind::InnerTube
+            } else {
+                PartKind::BodyTube
+            };
+            if parent == i
+                || tube.kind != expected
+                || p.position_m < tube.position_m - 1e-8
+                || p.position_m + p.length_m > tube.position_m + tube.length_m + 1e-8
+            {
+                return Err("Internal component must fit within its parent tube".into());
+            }
+            if p.kind == PartKind::InnerTube
+                && p.diameter_m > tube.diameter_m - 2. * tube.thickness_m + 1e-8
+            {
+                return Err("Inner tube exceeds its parent's bore".into());
+            }
+            if p.kind == PartKind::EngineBlock
+                && p.diameter_m > tube.diameter_m - 2. * tube.thickness_m + 1e-8
+            {
+                return Err("Engine block exceeds the motor tube bore".into());
+            }
+            if p.auto_ring_fit
+                && (p.kind != PartKind::CenteringRing || p.diameter_m <= tube.diameter_m)
+            {
+                return Err("Centering ring must surround a smaller inner tube".into());
+            }
+        }
+    }
     if let Some(m) = &s.materials {
         if m.use_material_mass && s.geometry.is_none() {
             return Err("Material mass calculation requires explicit stage geometry".into());
@@ -892,6 +1188,20 @@ pub fn validate(s: &Stage) -> Result<()> {
     for c in &s.components {
         if c.appearance_rgba.iter().any(|v| !(0.0..=1.0).contains(v)) {
             return Err("Invalid component color".into());
+        }
+        if c.kind == PartKind::CustomMesh {
+            let mesh = c
+                .mesh
+                .as_ref()
+                .ok_or("Imported part has no embedded geometry")?;
+            mesh.validate()?;
+            if !mesh.closed && !c.mass_override {
+                return Err(
+                    "Open imported mesh needs a mass override or a repaired closed solid".into(),
+                );
+            }
+        } else if c.mesh.is_some() {
+            return Err("Embedded mesh requires an imported-model component".into());
         }
         if let Some(chute) = &c.recovery
             && [

@@ -112,3 +112,111 @@ fn automatic_tube_fins_touch_the_body_and_neighbors() {
     p.size_tube_fins(s.diameter_m);
     assert_eq!(p.diameter_m, 0.03);
 }
+
+#[test]
+fn transition_is_a_tapered_section_and_next_tube_matches_its_aft_end() {
+    let mut m = Mission::demo(false);
+    let s = &mut m.stages[0];
+    s.geometry = Some(StageGeometry::generic(s, true));
+    let original_length = s.length_m;
+    let original_diameter = s.diameter_m;
+    let transition = attach_transition(s, original_length);
+    let p = &s.components[transition];
+    assert_eq!(p.position_m, original_length);
+    assert_eq!(p.fore_diameter_m, original_diameter);
+    assert!(p.diameter_m < p.fore_diameter_m);
+    assert!((s.length_m - original_length - p.length_m).abs() < 1e-10);
+    let aft = p.diameter_m;
+    let end = p.position_m + p.length_m;
+    assert_eq!(tube_attachment(s, end), end);
+    let body = attach_tube(s, end);
+    assert_eq!(s.components[body].diameter_m, aft);
+    assert_eq!(s.components[body].position_m, end);
+    validate(s).unwrap();
+    assert_eq!(m.stages.len(), 1);
+    m.validate().unwrap();
+}
+
+#[test]
+fn front_transition_does_not_hide_the_implicit_body_tail_attachment() {
+    let mut s = stage();
+    s.geometry.as_mut().unwrap().nose_length_m = 0.;
+    let mut front = Part::new(PartKind::Transition, &s);
+    front.position_m = 0.;
+    front.diameter_m = s.diameter_m;
+    s.components.push(front);
+    assert_eq!(tube_attachment(&s, s.length_m - 0.001), s.length_m);
+    assert_eq!(
+        tube_attachment(&s, airframe_front_m(&s) + 0.001),
+        airframe_front_m(&s)
+    );
+}
+
+#[test]
+fn inner_tube_rings_and_motor_follow_their_parent_and_survive_reindexing() {
+    let mut s = stage();
+    let inner = attach_internal(&mut s, PartKind::InnerTube, 0.7);
+    let body = s.components[inner].parent_component.unwrap();
+    let start = s.components[inner].position_m;
+    let ring = attach_internal(&mut s, PartKind::CenteringRing, start);
+    assert_eq!(s.components[ring].parent_component, Some(inner));
+    let body_bore = s.components[body].diameter_m - 2. * s.components[body].thickness_m;
+    assert_eq!(s.components[ring].diameter_m, body_bore);
+    assert!(
+        (s.components[ring].diameter_m
+            - 2. * s.components[ring].thickness_m
+            - s.components[inner].diameter_m)
+            .abs()
+            < 1e-12
+    );
+    s.components[inner].motor_mount = true;
+    s.components[inner].motor_length_m = s.components[inner].length_m * 0.9;
+    refit_internals(&mut s);
+    let old_motor_cg = s.motor.cg_m;
+    s.components[inner].position_m += 0.01;
+    move_children(&mut s, inner, 0.01);
+    s.components[inner].diameter_m *= 0.9;
+    refit_internals(&mut s);
+    assert!((s.components[ring].position_m - start - 0.01).abs() < 1e-12);
+    assert!((s.motor.cg_m - old_motor_cg - 0.01).abs() < 1e-12);
+    assert!(
+        (s.components[ring].diameter_m
+            - 2. * s.components[ring].thickness_m
+            - s.components[inner].diameter_m)
+            .abs()
+            < 1e-12
+    );
+    validate(&s).unwrap();
+    let tree = take_component_tree(&mut s, inner);
+    assert_eq!(tree.len(), 2);
+    assert_eq!(tree[1].parent_component, Some(0));
+    assert!(s.components.iter().all(|p| p.parent_component.is_none()));
+    let saved = serde_json::to_string(&tree).unwrap();
+    let restored: Vec<Part> = serde_json::from_str(&saved).unwrap();
+    assert!(restored[0].motor_mount);
+    assert!(restored[1].auto_ring_fit);
+}
+
+#[test]
+fn invalid_mounts_and_parent_relationships_cannot_launch() {
+    let mut s = stage();
+    let inner = attach_internal(&mut s, PartKind::InnerTube, 0.7);
+    let valid = s.clone();
+    s.components[inner].parent_component = Some(inner);
+    assert!(validate(&s).is_err());
+    s = valid.clone();
+    s.components[inner].motor_mount = true;
+    s.components[inner].motor_length_m = s.length_m * 2.;
+    assert!(validate(&s).is_err());
+    s = valid;
+    let parent = s.components[inner].parent_component.unwrap();
+    remove_component(&mut s, parent);
+    assert!(
+        s.components
+            .iter()
+            .find(|p| p.kind == PartKind::InnerTube)
+            .unwrap()
+            .parent_component
+            .is_none()
+    );
+}

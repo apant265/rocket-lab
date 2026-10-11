@@ -105,6 +105,7 @@ pub fn body_radius(m: &Mission, active: usize, x: f64) -> f64 {
                         crate::assembly::PartKind::BodyTube
                             | crate::assembly::PartKind::NoseCone
                             | crate::assembly::PartKind::Transition
+                            | crate::assembly::PartKind::CustomMesh
                     ) && local >= p.position_m
                         && local <= p.position_m + p.length_m
                 })
@@ -112,6 +113,12 @@ pub fn body_radius(m: &Mission, active: usize, x: f64) -> f64 {
                     let u = (local - p.position_m) / p.length_m;
                     let aft = p.diameter_m * 0.5;
                     match p.kind {
+                        crate::assembly::PartKind::CustomMesh => {
+                            p.mesh.as_ref().map_or(0.0, |mesh| {
+                                mesh.radius(local - p.position_m, p.length_m, p.diameter_m)
+                                    + p.radial_offset_m
+                            })
+                        }
                         crate::assembly::PartKind::NoseCone => {
                             aft * crate::design::nose_radius_fraction(
                                 p.shape
